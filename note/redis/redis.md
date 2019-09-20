@@ -1360,3 +1360,5 @@ Interrupted.
 Elapsed: 35.25 sec.
 zhenglubiaodeMacBook-Pro:bin zlb$
 ```
+
+- 部分指标说明：  cl 连接客户端数量，bcl 阻塞客户端数量(如BLPOP)，exp/s 每秒过期key数量，evt/s 每秒淘汰key数量，aofcs AOF日志当前大小,我们看到，此款软件功能上与redis-cli –stat 类似，监控项目也更加全面，但是不如系统自动的工具来得快。
