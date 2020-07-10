@@ -120,55 +120,6 @@ for(int i=0; i<1000; i++) {
     - Stream在执行每一步中间操作时，并不会做实际的数据操作处理，而是将这些中间操作串联起来，最终由终结操作触发，生成一个数据处理链表，通过Java8中的Spliterator迭代器进行数据处理；此时，每执行一次迭代，就对所有的无状态的中间操作(StatelessOp)进行数据处理，而对有状态的中间操作，就需要迭代处理完所有的数据，再进行处理操作；最后就是进行终结操作的数据处理。
 - 在并行处理操作中
     - Stream对中间操作基本跟串行处理方式是一样的，但在终结操作中，Stream将结合ForkJoin框架对集合进行切片处理，ForkJoin框架将每个切片的处理结果Join合并起来。最后就是要注意Stream的使用场景
-    
-##### I/O
-- I/O是机器获取和交换信息的主要渠道，而流是完成I/O操作的主要方式。
-- 在计算机中，流是一种信息的转换: 机器间或程序间在进行信息交换或者数据交换时，总是先将对象或数据转换为某种形式的流，再通过流的传输，到达指定机器或程序后，再将流转换为对象数据。因此，流就可以被看作是一种数据的载体，通过它可以实现数据交换和传输。
-
-- 字节流 字符流
-- 字符到字节必须经过转码，这个过程非常耗时，如果我们不知道编码类型就很容易出现乱码问题。所以I/O流提供了一个直接操作字符的接口，方便我们平时对字符进行流操作
-
-- I/O操作分为磁盘I/O操作和网络I/O操作。前者是从磁盘中读取数据源输入到内存中，之后将读取的信息持久化输出在物理磁盘上；后者是从网络中读取信息输入到内存，最终将信息输出到网络中。但不管是磁盘I/O还是网络I/O，在传统I/O中都存在严重的性能问题
-
-- 传统I/O的性能问题
-    - 多次内存复制 数据先从外部设备复制到内核空间，再从内核空间复制到用户空间，这就发生了两次内存复制操作
-    - 阻塞 InputStream的read()是一个while循环操作，它会一直等待数据读取，直到数据就绪才会返回。这就意味着如果没有数据就绪，这个读取操作将会一直被挂起，用户线程将会处于阻塞状态
-        - 但在发生大量连接请求时，就需要创建大量监听线程，这时如果线程没有数据就绪就会被挂起，然后进入阻塞状态。一旦发生线程阻塞，这些线程将会不断地抢夺CPU资源，从而导致大量的CPU上下文切换，增加系统的性能开销
-        
-- NIO
-    - 使用缓冲区优化读写流操作
-        - NIO与传统 I/O 不同，它是基于块（Block）的，它以块为基本单位处理数据
-        - Buffer是一块连续的内存块，是 NIO 读写数据的中转地。Channel表示缓冲数据的源头或者目的地，它用于读取缓冲或者写入数据，是访问缓冲的接口
-        - 传统I/O和NIO的最大区别就是传统I/O是面向流，NIO是面向Buffer
-        - Buffer可以将文件一次性读入内存再做后续处理，而传统的方式是边读文件边处理数据
-    - 使用DirectBuffer减少内存复制
-        - NIO的Buffer除了做了缓冲块优化之外，还提供了一个可以直接访问物理内存的类DirectBuffer。普通的Buffer分配的是JVM堆内存，而DirectBuffer是直接分配物理内存
-        - 数据要输出到外部设备，必须先从用户空间复制到内核空间，再复制到输出设备，而DirectBuffer则是直接将步骤简化为从内核空间复制到外部设备，减少了数据拷贝
-        - DirectBuffer申请的是非JVM的物理内存，所以创建和销毁的代价很高。DirectBuffer申请的内存并不是直接由JVM负责垃圾回收，但在DirectBuffer包装类被回收时，会通过Java Reference机制来释放该内存块
-    - 避免阻塞，优化I/O操作
-        - NIO很多人也称之为Non-block I/O，即非阻塞I/O，因为这样叫，更能体现它的特点
-        - 传统的I/O对Socket的输入流进行读取时，读取流会一直阻塞，直到发生以下三种情况的任意一种才会解除阻塞
-            ```
-                有数据可读；
-                连接释放；
-                空指针或I/O异常。
-            ```  
-        - NIO发布后，通道和多路复用器这两个基本组件实现了NIO的非阻塞
-            - 通道（Channel）
-                - 传统I/O的数据读取和写入是从用户空间到内核空间来回复制，而内核空间的数据是通过操作系统层面的I/O接口从磁盘读取或写入; 最开始，在应用程序调用操作系统I/O接口时，是由CPU完成分配，这种方式最大的问题是“发生大量I/O请求时，非常消耗CPU“；之后，操作系统引入了DMA（直接存储器存储），内核空间与磁盘之间的存取完全由DMA负责，但这种方式依然需要向CPU申请权限，且需要借助DMA总线来完成数据的复制操作，如果DMA总线过多，就会造成总线冲突
-                - 通道的出现解决了以上问题，Channel有自己的处理器，可以完成内核空间和磁盘之间的I/O操作
-            - 多路复用器（Selector）
-                - Selector是Java NIO编程的基础。用于检查一个或多个NIO Channel的状态是否处于可读、可写。
-                - Selector是基于事件驱动实现的，我们可以在Selector中注册accpet、read监听事件，Selector会不断轮询注册在其上的Channel，如果某个Channel上面发生监听事件，这个Channel就处于就绪状态，然后进行I/O操作。
-                - 一个线程使用一个Selector，通过轮询的方式，可以监听多个Channel上的事件。我们可以在注册Channel时设置该通道为非阻塞，当Channel上没有I/O操作时，该线程就不会一直等待了，而是会不断轮询所有Channel，从而避免发生阻塞
-                - 目前操作系统的I/O多路复用机制都使用了epoll，相比传统的select机制，epoll没有最大连接句柄1024的限制。所以Selector在理论上可以轮询成千上万的客户端。
-            
-    - Java的传统I/O开始是基于InputStream和OutputStream两个操作流实现的，这种流操作是以字节为单位，如果在高并发、大数据场景中，很容易导致阻塞，因此这种操作的性能是非常差的。还有，输出数据从用户空间复制到内核空间，再复制到输出设备，这样的操作会增加系统的性能开销
-    - 于是NIO发布，它是基于缓冲块为单位的流操作，在Buffer的基础上，新增了两个组件“管道和多路复用器”，实现了非阻塞I/O，NIO适用于发生大量I/O连接请求的场景，这三个组件共同提升了I/O的整体性能。
-    
-    - 来源网络待确认 (在Linux中，AIO并未真正使用操作系统所提供的异步I/O，它仍然使用poll或epoll，并将API封装为异步I/O的样子，但是其本质仍然是同步非阻塞I/O，加上第三方产品的出现，Java网络编程明显落后，所以没有成为主流)
-    
-    
 ##### 线程
 - 在HotSpot VM的线程模型中，Java线程一对一映射为内核线程。Java线程的创建与销毁会消耗一定的计算机资源，增加系统的性能开销
 - 大量创建线程给系统带来性能问题，内存和CPU资源将被线程抢占，如果处理不当，会发生内存溢出、CPU使用率超负荷等问题
@@ -204,3 +155,151 @@ for(int i=0; i<1000; i++) {
     - Kilim协程框架 通过协程框架在Java中使用协程。在有严重阻塞的场景下，协程的性能更胜一筹。其实，I/O阻塞型场景也就是协程在Java中的主要应用
     - 而Go语言是使用了N:M线程模型实现了自己的调度器，它在N个内核线程上多路复用（或调度）M个协程，协程的上下文切换是在用户态由协程调度器完成的，因此不需要陷入内核，相比之下，这个代价就很小了。
     - 可以将协程看作是一个类函数或者一块函数中的代码，我们可以在一个主线程里面轻松创建多个协程
+
+##### 优化垃圾回收机制
+- 对内存要求苛刻的情况下，需要提高对象的回收效率；在CPU使用率高的情况下，需要降低高并发时垃圾回收的频率
+- 程序计数器、虚拟机栈和本地方法栈这3个区域是线程私有的，随着线程的创建而创建，销毁而销毁；栈中的栈帧随着方法的进入和退出进行入栈和出栈操作，每个栈帧中分配多少内存基本是在类结构确定下来的时候就已知的，因此这三个区域的内存分配和回收都具有确定性
+- 堆中的回收主要是对象的回收，方法区的回收主要是(废弃常量和)无用的类的回收
+- 一个对象到 GC Roots 没有任何引用链相连时，就证明此对象是不可用的, 如果执行一次finalize方法后依然没有引用链相连则回收
+    - 弱引用 只被弱引用关联的对象 下一次垃圾回收就会被回收
+    - 从而使程序能更加灵活的控制对象的生命周期
+- 垃圾回收线程在JVM中是自动执行的，Java程序无法强制执行。我们唯一能做的就是通过调用System.gc方法来"建议"执行垃圾收集器，但是否可执行，什么时候执行？仍然不可预期
+- Available Collectors
+    - https://docs.oracle.com/javase/8/docs/technotes/guides/vm/gctuning/collectors.html#sthref28
+- GC性能衡量指标
+    - 吞吐量
+        - 应用程序耗时/系统总运行时间 
+        - 系统总运行时间 = 应用程序耗时 + gc耗时
+    - 停顿时间  
+        - stop the world
+        - 垃圾收集器正在运行时，应用程序的暂停时间
+        - 串行回收器 单次停顿时间长；并发回收器，由于垃圾收集器和应用程序交替运行，程序的单次停顿时间就会变短，但其效率很可能不如独占垃圾收集器，系统的吞吐量也很可能会降低
+    - 垃圾回收频率
+        - 增大堆内存空间可以有效降低垃圾回收发生的频率，但同时也意味着堆积的回收对象越多，最终也会增加回收时的停顿时间
+```
+-XX:+PrintGC 输出GC日志
+-XX:+PrintGCDetails 输出GC的详细日志
+-XX:+PrintGCTimeStamps 输出GC的时间戳（以基准时间的形式）
+-XX:+PrintGCDateStamps 输出GC的时间戳（以日期的形式，如 2013-05-04T21:53:59.234+0800）
+-XX:+PrintHeapAtGC 在进行GC的前后打印出堆的信息
+-Xloggc:../logs/gc.log 日志文件的输出路径
+```
+- GC日志分析工具
+    - GCViewer
+    - GCeasy
+- GC调优策略
+    - 如果在堆内存中存在较多的长期存活的对象，此时增加年轻代空间，反而会增加Minor GC的时间。如果堆中的短期对象很多，那么扩容新生代，单次Minor GC时间不会显著增加
+    - 因此，单次Minor GC时间更多取决于GC后存活对象的数量，而非Eden区的大小，所以可以增加年轻代大小、减少长期对象
+    - 降低Full GC的频率 通常情况下，由于堆内存空间不足或老年代对象太多，会触发Full GC，频繁的Full GC会带来上下文切换，增加系统的性能开销
+        - 减少创建大对象
+        - 增大堆内存空间 设置初始化堆内存为最大堆内存
+- 垃圾收集器的种类很多，我们可以将其分成两种类型，一种是响应速度快，一种是吞吐量高。通常情况下，CMS和G1回收器的响应速度快，Parallel Scavenge回收器的吞吐量高
+- 在JDK1.8环境下，默认使用的是Parallel Scavenge（年轻代）+Serial Old（老年代）垃圾收集器
+
+##### 优化JVM内存分配
+- JVM内存表现出的性能问题
+    - JVM内存溢出事故。这方面的事故往往是应用程序创建对象导致的内存回收对象难，一般属于代码编程问题
+    - JVM内存分配不合理带来的性能表现并不会像内存溢出问题这么突出。可以说如果你没有深入到各项性能指标中去，是很难发现其中隐藏的性能损耗。
+        - JVM内存分配不合理最直接的表现就是频繁的GC，这会导致上下文切换等性能问题，从而降低系统的吞吐量、增加系统的响应时间
+        - 经历Minor GC年龄+1 ， 直接分配到老年代的对象内存大小阀值
+        
+```
+appledeiMac:~ apple$ java -XX:+PrintFlagsFinal  -version | grep NewRatio
+    uintx NewRatio                                  = 2                                   {product}
+java version "1.8.0_221"
+Java(TM) SE Runtime Environment (build 1.8.0_221-b11)
+Java HotSpot(TM) 64-Bit Server VM (build 25.221-b11, mixed mode)
+appledeiMac:~ apple$
+appledeiMac:~ apple$ java -XX:+PrintFlagsFinal  -version | grep XX:SurvivorRatio
+java version "1.8.0_221"
+Java(TM) SE Runtime Environment (build 1.8.0_221-b11)
+Java HotSpot(TM) 64-Bit Server VM (build 25.221-b11, mixed mode)
+appledeiMac:~ apple$ java -XX:+PrintFlagsFinal  -version | grep SurvivorRatio
+    uintx InitialSurvivorRatio                      = 8                                   {product}
+    uintx MinSurvivorRatio                          = 3                                   {product}
+    uintx SurvivorRatio                             = 8                                   {product}
+    uintx TargetSurvivorRatio                       = 50                                  {product}
+java version "1.8.0_221"
+Java(TM) SE Runtime Environment (build 1.8.0_221-b11)
+Java HotSpot(TM) 64-Bit Server VM (build 25.221-b11, mixed mode)
+appledeiMac:~ apple$
+```
+- NewRatio=2=老年代/年轻代 即 在JDK1.7中，默认情况下年轻代和老年代的比例是1:2，我们可以通过–XX:NewRatio重置该配置项。
+- SurvivorRatio=8=Eden/Survivor 即年轻代中的Eden和To Survivor、From Survivor的比例是8:1:1，我们可以通过-XX:SurvivorRatio重置该配置项
+- 在JDK1.7中如果开启了-XX:+UseAdaptiveSizePolicy配置项，JVM将会动态调整Java堆中各个区域的大小以及进入老年代的年龄，–XX:NewRatio和-XX:SurvivorRatio将会失效，而JDK1.8是默认开启-XX:+UseAdaptiveSizePolicy配置项的
+- 参考指标
+    - GC频率
+    - 内存： 堆的大小和堆中年轻代和老年代的比例
+    - 吞吐量 tps
+    - 响应时间 RT
+- 调优
+    - 调大堆内存大小减少FullGC
+        - -Xmssize Sets the initial size (in bytes) of the heap
+            - This value must be a multiple of 1024 and greater than 1 MB
+            - If you do not set this option, then the initial size will be set as the sum of the sizes allocated for the old generation and the young generation
+            - The initial size of the heap for the young generation can be set using the -Xmn option or the -XX:NewSize option.
+        - -Xmxsize The -Xmx option is equivalent to -XX:MaxHeapSize.
+            - Specifies the maximum size (in bytes) of the memory allocation pool in bytes
+            - This value must be a multiple of 1024 and greater than 2 MB
+            - -Xms and -Xmx are often set to the same value.
+    - 调整年轻代减少MinorGC
+        - -Xmnsize Sets the initial and maximum size (in bytes) of the heap for the young generation (nursery). 
+        - The young generation region of the heap is used for new objects. GC is performed in this region more often than in other regions.
+        - If the size for the young generation is too small, then a lot of minor garbage collections will be performed. If the size is too large, then only full garbage collections will be performed, which can take a long time to complete
+        - Oracle recommends that you keep the size for the young generation between a half and a quarter of the overall heap size.
+        - Instead of the -Xmn option to set both the initial and maximum size of the heap for the young generation, you can use -XX:NewSize to set the initial size and -XX:MaxNewSize to set the maximum size.
+    - 设置Eden、Survivor区比例：在JVM中，如果开启 AdaptiveSizePolicy，则每次 GC 后都会重新计算 Eden、From Survivor和 To Survivor区的大小，计算依据是 GC 过程中统计的 GC 时间、吞吐量、内存占用量。这个时候SurvivorRatio默认设置的比例会失效
+        - -XX:-UseAdaptiveSizePolicy关闭该项配置,固定Eden区的占用比例，来调优JVM的内存分配性能
+        
+##### 
+```
+top
+ 查看进程使用系统资源
+top -Hp pid
+查看单个进程下线程使用系统资源
+
+vmstat
+经常被用来观察系统整体的上下文切换
+
+pidstat 
+pidstat命令则是观察单个进程并深入到线程级别
+pidstat -p 14304 -w  2  指定进程的上下文切换
+* Cswch/s:每秒主动任务上下文切换数量
+* Nvcswch/s:每秒被动任务上下文切换数量
+
+pidstat -p 14304 -t  2 统计进程的线程信息
+
+jstack
+jstack pid 命令查看线程的堆栈信息
+通常会结合top -Hp pid 或 pidstat -p pid -t一起查看具体线程的状态，也经常用来排查一些死锁的异常，可以查看到线程ID、线程的状态（wait、sleep、running 等状态）以及是否持有锁等。
+
+jmap
+
+堆信息
+堆中对象直方图 对象数量 大小
+dump堆内存快照 然后通过mat分析
+
+
+jstat
+监测Java应用程序的实时运行情况 ClassLoad  JIT编译  gc  新生代 老年代 元空间
+jstat -gc -t -h2 8850 1000
+jstat -options
+
+
+```
+- 案例
+
+
+##### 32高性能SQL语句
+- 慢SQL语句的几种常见诱因
+    - 无索引 索引失效导致慢查询
+    - 锁等待
+        - InnoDB行锁升级为表锁
+            - 批量更新操作 (一张表使用大量行锁，会导致事务执行效率下降，从而可能造成其它事务长时间锁等待和更多的锁冲突问题发生，致使性能严重下降，所以MySQL会将行锁升级为表锁)
+            - 行锁是基于索引加的锁，如果我们在更新操作时，条件索引失效，那么行锁也会升级为表锁
+        - 死锁
+        - MyISAM表锁
+    - 不恰当的SQL语句
+        - 习惯使用<SELECT *>，<SELECT COUNT(*)> SQL语句
+        - 大数据表中使用<LIMIT M,N>分页查询
+        - 对非索引字段进行排序
