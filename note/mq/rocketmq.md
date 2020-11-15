@@ -75,4 +75,23 @@
     - 发消息时，设置delayLevel等级即可：msg.setDelayLevel(level)
     - 并根据delayTimeLevel存入特定的queue，queueId = delayTimeLevel – 1，即一个queue只存相同延迟的消息，保证具有相同发送延迟的消息能够顺序消费
     - 需要注意的是，定时消息会在第一次写入和调度写入真实topic时都会计数，因此发送数量、tps都会变高
-- 
+- 消息重试-重新消费
+    - RocketMQ会为每个消费组都设置一个重试队列 针对消费组，而不是针对每个Topic设置的
+    - 暂时保存因为各种异常而导致Consumer端无法消费的消息
+    - 会为重试队列设置多个重试级别，每个重试级别都有与之对应的重新投递延时，重试次数越多投递延时就越大
+- 消息重投
+    - 同步消息失败会重投，异步消息有重试，oneway没有任何保证
+    - 可能会造成消息重复，消息重复在RocketMQ中是无法避免的问题(kafka，broker 给每个 producer 都分配了一个 ID ，并且 producer 给每条被发送的消息分配了一个序列号来避免产生重复的消息)
+    - 另外，生产者主动重发、consumer负载变化也会导致重复消息
+    - 消息重试策略
+        - retryTimesWhenSendFailed 不会选择上次失败的broker，尝试向其他broker发送，最大程度保证消息不丢。超过重投次数，抛出异常，由客户端保证消息不丢。当出现RemotingException、MQClientException和部分MQBrokerException时会重投。
+        - retryTimesWhenSendAsyncFailed 异步重试不会选择其他broker，仅在同一个broker上做重试，不保证消息不丢。
+        - retryAnotherBrokerWhenNotStoreOK 消息刷盘（主或备）超时或slave不可用（返回状态非SEND_OK），是否尝试发送到其他broker，默认false。十分重要消息可以开启。
+- 流量控制
+    - 生产者流控 ？
+        - 生产者流控，不会尝试消息重投。
+    - 消费者流控 ？
+        - 消费者流控的结果是降低拉取频率。
+-  死信队列
+    - 当一条消息初次消费失败，消息队列会自动进行消息重试；达到最大重试次数后，若消费依然失败，则表明消费者在正常情况下无法正确地消费该消息，此时，消息队列 不会立刻将消息丢弃，而是将其发送到该消费者对应的特殊队列中   
+    - 可以通过使用console控制台对死信队列中的消息进行重发来使得消费者实例再次进行消费
