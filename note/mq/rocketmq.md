@@ -126,5 +126,28 @@
         - 注意：当前RocketMQ版本在部署架构上支持一Master多Slave，但只有BrokerId=1的从服务器才会参与消息的读负载。
 
 - 工作流程
-    - Producer发送消息，启动时先跟NameServer集群中的其中一台建立长连接，并从NameServer中获取当前发送的Topic存在哪些Broker上，轮询从队列列表中选择一个队列，然后与队列所在的Broker建立长连接从而向Broker发消息
+    - Producer发送消息，启动时先跟NameServer集群中的其中一台建立长连接，并从NameServer中获取当前发送的Topic存在哪些Broker上，轮询从队列列表中选择一个队列，然后与队列所在的Broker建立长连接从而向Broker发消息 *
     
+### design
+#### 消息存储
+- 消息存储整体架构
+    - CommitLog
+        - 日志数据文件 消息主体以及元数据的存储文件
+        - 文件名长度为20位，左边补零，剩余为起始偏移量
+        - 消息主要是顺序写入日志文件，当文件满了，写入下一个文件
+    - ConsumeQueue
+        - consumequeue文件可以看成是基于topic的commitlog索引文件，故consumequeue文件夹的组织方式如下：topic/queue/file三层组织结构
+        - 逻辑消费队列，消息消费队列，引入的目的主要是提高消息消费的性能
+        - ConsumeQueue（逻辑消费队列）作为消费消息的索引，保存了指定Topic下的队列消息在CommitLog中的起始物理偏移量offset，消息大小size和消息Tag的HashCode值
+        - 同样consumequeue文件采取定长设计，每一个条目共20个字节，分别为8字节的commitlog物理偏移量、4字节的消息长度、8字节tag hashcode，单个文件由30W个条目组成，可以像数组一样随机访问每一个条目，每个ConsumeQueue文件大小约5.72M
+        - 由于RocketMQ是基于主题topic的订阅模式，Consumer即可根据ConsumeQueue来查找待消费的消息
+    - IndexFile
+        - （索引文件）提供了一种可以通过key或时间区间来查询消息的方法
+        - IndexFile的底层存储设计为在文件系统中实现HashMap结构，故rocketmq的索引文件其底层实现为hash索引
+    - tip
+        - RocketMQ采用的是混合型的存储结构，即为Broker单个实例下所有的队列共用一个日志数据文件（即为CommitLog）来存储
+        - RocketMQ的混合型存储结构(多个Topic的消息实体内容都存储于一个CommitLog中)针对Producer和Consumer分别采用了数据和索引部分相分离的存储结构
+        - 当无法拉取到消息后，可以等下一次消息拉取，同时服务端也支持长轮询模式，如果一个消息拉取请求未拉取到消息，Broker允许等待30s的时间，只要这段时间内有新消息到达，将直接返回给消费端
+        - RocketMQ的具体做法是，使用Broker端的后台服务线程—ReputMessageService不停地分发请求并异步构建ConsumeQueue（逻辑消费队列）和IndexFile（索引文件）数据。 
+        - 同一个top下有多个消息队列文件？ 消息顺序?
+            
