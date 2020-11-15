@@ -95,3 +95,36 @@
 -  死信队列
     - 当一条消息初次消费失败，消息队列会自动进行消息重试；达到最大重试次数后，若消费依然失败，则表明消费者在正常情况下无法正确地消费该消息，此时，消息队列 不会立刻将消息丢弃，而是将其发送到该消费者对应的特殊队列中   
     - 可以通过使用console控制台对死信队列中的消息进行重发来使得消费者实例再次进行消费
+    
+#### architecture
+- Producer 
+    - 分布式集群方式部署
+    - 通过MQ的负载均衡模块选择相应的Broker集群队列进行消息投递
+    - 投递的过程支持快速失败并且低延迟。
+    - Producer与NameServer集群中的其中一个节点（随机选择）建立长连接，定期从NameServer获取Topic路由信息，并向提供Topic 服务的Master建立长连接，且定时向Master发送心跳。Producer完全无状态，可集群部署
+    
+- Consumer
+    - 分布式集群方式部署
+    - push推，pull拉两种模式
+    - 集群方式和广播方式的消费
+    - 实时消息订阅机制
+    - Consumer与NameServer集群中的其中一个节点（随机选择）建立长连接，定期从NameServer获取Topic路由信息，并向提供Topic服务的Master、Slave建立长连接，且定时向Master、Slave发送心跳
+    
+- NameServer
+    - 一个非常简单的Topic路由注册中心 其角色类似Dubbo中的zookeeper
+    - 支持Broker的动态注册与发现
+    - 接受Broker集群的注册信息并且保存下来作为路由信息的基本数据。然后提供心跳检测机制，检查Broker是否还存活
+    - 每个NameServer将保存关于Broker集群的整个路由信息和用于客户端查询的队列信息。然后Producer和Conumser通过NameServer就可以知道整个Broker集群的路由信息，从而进行消息的投递和消费
+    - NameServer通常也是集群的方式部署，各实例间相互不进行信息通讯
+    - NameServer是一个几乎无状态节点，可集群部署，节点之间无任何信息同步。
+      
+- BrokerServer
+    - Broker主要负责消息的存储、投递和查询以及服务高可用保证
+        - HA, Master与Slave 的对应关系通过指定相同的BrokerName，不同的BrokerId 来定义，BrokerId为0表示Master，非0表示Slave
+        - Master也可以部署多个
+        - 每个Broker与NameServer集群中的所有节点建立长连接，定时注册Topic信息到所有NameServer
+        - 注意：当前RocketMQ版本在部署架构上支持一Master多Slave，但只有BrokerId=1的从服务器才会参与消息的读负载。
+
+- 工作流程
+    - Producer发送消息，启动时先跟NameServer集群中的其中一台建立长连接，并从NameServer中获取当前发送的Topic存在哪些Broker上，轮询从队列列表中选择一个队列，然后与队列所在的Broker建立长连接从而向Broker发消息
+    
