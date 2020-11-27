@@ -1,4 +1,46 @@
 # redis
+- Redis单进程单线程的特性，天然可以解决分布式集群的并发问题
+- 单进程单线程模型的原因
+    - 绝大部分请求是纯粹的内存操作
+    - 采用单线程,避免了不必要的上下文切换和竞争条件
+    - 内部实现采用非阻塞IO和epoll，基于epoll自己实现的简单的事件框架。epoll中的读、写、关闭、连接都转化成了事件，然后利用epoll的多路复用特性，绝不在io上浪费一点时间
+#### Lua
+- 原子性
+    - Lua脚本会以原子性方式进行，单线程的方式执行脚本，在执行脚本时不会再执行其他脚本或命令。并且，Redis只要开始执行Lua脚本，就会一直执行完该脚本再进行其他操作，所以Lua脚本中不能进行耗时操作
+- Redis集群键值映射问题
+    - Redis的KeySlot算法中，如果key包含{}，就会使用第一个{}内部的字符串作为hash key，这样就可以保证拥有同样{}内部字符串的key就会拥有相同slot。Redis要求单个Lua脚本操作的key必须在同一个节点上，但是Cluster会将数据自动分布到不同的节点，使用这种方法就解决了上述的问题
+- 优点
+    - 还可以减少与Redis的交互，减少网络请求的次数
+- 缺点
+    - Lua脚本中不能进行耗时操作
+- 使用场景
+    - 有很多，比如说分布式锁，限流，秒杀等，
+    - 总结起来，下面两种情况下可以使用Lua脚本:
+        - 使用 Lua 脚本实现原子性操作的CAS，避免不同客户端先读Redis数据，经过计算后再写数据造成的并发问题
+        - 前后多次请求的结果有依赖时，使用 Lua 脚本将多个请求整合为一个请求
+            - 如果前后多次请求的结果没有依赖时可使用pipeline
+- 注意事项
+    - 不要自定义的全局变量；要保证安全性，在Lua脚本中不要定义自己的全局变量，以免污染 Redis内嵌的Lua环境。因为Lua脚本中你会使用一些预制的全局变量，比如说 redis.call()
+    - 注意 Lua 脚本的时间复杂度；Redis 的单线程同样会阻塞在 Lua 脚本的执行中
+    - 原子操作的破坏；使用 Lua 脚本实现原子操作时，要注意如果 Lua 脚本报错，之前的命令无法回滚，这和Redis所谓的事务机制是相同的。 待确认*
+    - 使用pipeline代替； 一次发出多个 Redis 请求，但请求前后无依赖时，使用 pipeline，比 Lua 脚本方便
+    - Lua脚本操作的key必须在同一个Redis节点上；Redis要求单个Lua脚本操作的key必须在同一个Redis节点上。解决方案可以看下文对Gateway原理的解析
+- 性能测试
+    - redis benchmark
+    ```
+
+    ```
+## redis集群
+- 节点
+    - cluster-enabled yes 开启服务器的集群模式成为一个节点
+    
+- tip
+    - Redis 集群是一个可以在多个 Redis 节点之间进行数据共享的设施（installation）。
+    - Redis 集群不支持那些需要同时处理多个键的 Redis 命令， 因为执行这些命令需要在多个 Redis 节点之间移动数据， 并且在高负载的情况下， 这些命令将降低 Redis 集群的性能， 并导致不可预测的行为。
+    - Redis 集群提供了以下两个好处
+        - 将数据自动切分（split）到多个节点的能力。
+        - 当集群中的一部分节点失效或者无法进行通讯时， 仍然可以继续处理命令请求的能力。
+
 
 #### sorted set
 - Redis中的sorted set，是在skiplist, dict和ziplist基础上构建起来的:
@@ -107,15 +149,6 @@ nested exception is io.lettuce.core.RedisCommandExecutionException: CROSSSLOT Ke
 ```
 EvalSha is not supported in cluster environment.
 ```
-## redis集群
-- Redis 集群是一个可以在多个 Redis 节点之间进行数据共享的设施（installation）。
-
-- Redis 集群不支持那些需要同时处理多个键的 Redis 命令， 因为执行这些命令需要在多个 Redis 节点之间移动数据， 并且在高负载的情况下， 这些命令将降低 Redis 集群的性能， 并导致不可预测的行为。
-
-- Redis 集群提供了以下两个好处
-    - 将数据自动切分（split）到多个节点的能力。
-    - 当集群中的一部分节点失效或者无法进行通讯时， 仍然可以继续处理命令请求的能力。
-
 
 ## redis command
 
