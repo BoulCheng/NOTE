@@ -23,3 +23,14 @@
     - Kafka的 topic 被分割成了一组完全有序的 partition，其中每一个 partition 在任意给定的时间内只能被每个订阅了这个 topic 的 consumer 组中的一个 consumer 消费
     - 这意味着 partition 中 每一个 consumer 的位置仅仅是一个数字，即下一条要消费的消息的offset。这使得被消费的消息的状态信息相当少，每个 partition 只需要一个数字
     - consumer 可以回退到之前的 offset 来再次消费之前的数据，这个操作违反了队列的基本原则，但事实证明对大多数 consumer 来说这是一个必不可少的特性
+    
+    
+#### 消息交付语义
+- Exactly once——这正是人们想要的, 每一条消息只被传递一次
+    - producer
+        - 如果 producer 没有收到表明消息已经被提交的响应, 那么 producer 可以将消息重传
+        - 如果最初的请求事实上执行成功了，producer有幂等性的传递选项，该选项保证重传不会在 log 中产生重复条目
+    - broker
+        -  一旦消息被提交，只要有一个 broker 备份了该消息写入的 partition，并且保持“alive”状态，该消息就不会丢失
+        -  committed message 和 alive partition 
+    - consumer
