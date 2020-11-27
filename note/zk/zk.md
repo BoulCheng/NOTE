@@ -101,3 +101,14 @@
     - 共识性描述了分布式系统中多个节点之间，彼此对某个状态达成一致结果的过程。 在实践中，要保障系统满足不同程度的一致性，核心过程往往需要通过共识算法来达成。
       
 
+- Multi-Paxos算法
+    - 针对每一个要确定的值，运行一次Paxos算法实例（Instance），形成决议。每一个Paxos实例使用唯一的Instance ID标识
+    - 在所有Proposers中选举一个Leader，由Leader唯一地提交Proposal给Acceptors进行表决。这样没有Proposer竞争，解决了活锁问题。在系统中仅有一个Leader进行Value提交的情况下，Prepare阶段就可以跳过，从而将两阶段变为一阶段，提高效率
+    
+    - Multi-Paxos通过改变Prepare阶段的作用范围至后面Leader提交的所有实例，从而使得Leader的连续提交只需要执行一次Prepare阶段，后续只需要执行Accept阶段，将两阶段变为一阶段，提高了效率。为了区分连续提交的多个实例，每个实例使用一个Instance ID标识，Instance ID由Leader本地递增生成即可
+    - Multi-Paxos允许有多个自认为是Leader的节点并发提交Proposal而不影响其安全性，这样的场景即退化为Basic Paxos。
+     
+    - Chubby和Boxwood均使用Multi-Paxos。ZooKeeper使用的Zab也是Multi-Paxos的变形。
+    
+    - 不Prepare直接Accept为啥是安全的
+      - 在一个Leader提交proposal的前提下，不会有其他Proposer提交，那么就不会出现Acceptor promised的最大编号大于proposal中所带编号的情况，同样也不会出现Acceptor accept的编号大于proposal中所带编号的情况。因此这么做是安全的。
