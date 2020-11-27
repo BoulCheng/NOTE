@@ -37,7 +37,9 @@
     
 - Message
     - 每个消息拥有唯一的Message ID
+        - MessageId的长度总共有16字节，其中包含了消息存储主机地址（IP地址和端口），消息Commit Log offset
     - 可以携带具有业务标识的Key
+        - 如果消息的properties中设置了UNIQ_KEY这个属性，就用 topic + “#” + UNIQ_KEY的value作为 key 来做写入操作。如果消息设置了KEYS属性（多个KEY以空格分隔），也会用 topic + “#” + KEY 来做索引
     - 系统提供了通过Message ID和Key查询消息的功能
     
 - Tag
@@ -98,6 +100,7 @@
     
 #### architecture
 - Producer 
+    - 消息发送的高可用 * 
     - 分布式集群方式部署
     - 通过MQ的负载均衡模块选择相应的Broker集群队列进行消息投递
     - 投递的过程支持快速失败并且低延迟。
@@ -135,8 +138,8 @@
         - 日志数据文件 消息主体以及元数据的存储文件
         - 文件名长度为20位，左边补零，剩余为起始偏移量
         - 消息主要是顺序写入日志文件，当文件满了，写入下一个文件
-    - ConsumeQueue
-        - consumequeue文件可以看成是基于topic的commitlog索引文件，故consumequeue文件夹的组织方式如下：topic/queue/file三层组织结构
+    - ConsumeQueue(消息消费队列)
+        - consumequeue文件可以看成是基于topic的commitlog索引文件，故consumequeue文件夹的组织方式如下：topic/queue/file三层组织结构(一个队列由多个队列文件构成)
         - 逻辑消费队列，消息消费队列，引入的目的主要是提高消息消费的性能
         - ConsumeQueue（逻辑消费队列）作为消费消息的索引，保存了指定Topic下的队列消息在CommitLog中的起始物理偏移量offset，消息大小size和消息Tag的HashCode值
         - 同样consumequeue文件采取定长设计，每一个条目共20个字节，分别为8字节的commitlog物理偏移量、4字节的消息长度、8字节tag hashcode，单个文件由30W个条目组成，可以像数组一样随机访问每一个条目，每个ConsumeQueue文件大小约5.72M
@@ -151,3 +154,95 @@
         - RocketMQ的具体做法是，使用Broker端的后台服务线程—ReputMessageService不停地分发请求并异步构建ConsumeQueue（逻辑消费队列）和IndexFile（索引文件）数据。 
         - 同一个top下有多个消息队列文件？ 消息顺序?
             
+- 页缓存与内存映射
+    - 页缓存（PageCache)是OS对文件的缓存，用于加速对文件的读写
+    - OS使用PageCache机制对读写访问操作进行了性能优化，将一部分的内存用作PageCache
+    - 对于数据的读取，如果一次读取文件时出现未命中PageCache的情况，OS从物理磁盘上访问读取文件的同时，会顺序对其他相邻块的数据文件进行预读取
+    - ConsumeQueue逻辑消费队列存储的数据较少，并且是顺序读取，在page cache机制的预读取作用下，Consume Queue文件的读性能几乎接近读内存，即使在有消息堆积情况下也不会影响性能
+    
+    - RocketMQ主要通过MappedByteBuffer对文件进行读写操作，其中，利用了NIO中的FileChannel模型将磁盘上的物理文件直接映射到用户态的内存地址中，将对文件的操作转化为直接对内存地址进行操作，从而极大地提高了文件的读写效率
+    - 减少了在操作系统内核地址空间的缓冲区和用户应用程序地址空间的缓冲区之间来回进行拷贝的性能开销
+    - 正因为需要使用内存映射机制，故RocketMQ的文件存储都使用定长结构来存储，方便一次将整个文件映射至内存
+    
+- 消息刷盘
+    - 对于数据的写入，OS会先写入至Page Cache内，随后将Page Cache内的数据刷盘至物理磁盘上
+    - 同步刷盘：只有在消息真正持久化至磁盘后RocketMQ的Broker端才会真正返回给Producer端一个成功的ACK响应
+    - 异步刷盘：能够充分利用OS的PageCache的优势，只要消息写入PageCache即可将成功的ACK返回给Producer端
+        - 消息刷盘采用后台异步线程提交的方式进行，降低了读写延迟，提高了MQ的性能和吞吐量。
+        
+- 通信机制  
+    - 基本通讯流程
+        - (2) 消息生产者Producer作为客户端发送消息时候，需要根据消息的Topic从本地缓存的TopicPublishInfoTable获取路由信息。如果没有则更新路由信息会从NameServer上重新拉取，同时Producer会默认每隔30s向NameServer拉取一次路由信息 *
+        - (3) 消息生产者Producer根据2）中获取的路由信息选择一个队列（MessageQueue）进行消息发送；Broker作为消息的接收者接收消息并落盘存储。 * 
+        - (4) 消息消费者Consumer根据2）中获取的路由信息，并再完成客户端的负载均衡后，选择其中的某一个或者某几个消息队列来拉取消息并进行消费。 * 
+        
+        - 一个良好的网络通信模块在MQ中至关重要，它将决定RocketMQ集群整体的消息传输能力与最终的性能
+        - RocketMQ消息队列自定义了通信协议并在Netty的基础之上扩展了通信模块
+    - 协议设计与编解码 *
+    - 消息的通信方式和流程 *
+    - Reactor多线程设计(netty) *
+
+- 消息过滤- tag
+    - 在Consumer端订阅消息时再做消息过滤的，RocketMQ这么做是在于其Producer端写入消息和Consumer端订阅消息采用分离存储的机制来实现的，Consumer端订阅消息是需要通过ConsumeQueue这个消息消费的逻辑队列拿到一个索引，然后再从CommitLog里面读取真正的消息实体内容
+    
+    - Tag过滤方式
+        - Consumer端在订阅消息时除了指定Topic还可以指定TAG
+        - ConsumeQueue的存储结构其中有8个字节存储的Message Tag的哈希值，基于Tag的消息过滤正式基于这个字段值的。
+        - 从 ConsumeQueue读取到一条记录后，会用它记录的消息tag hash值去做过滤，由于在服务端只是根据hashcode进行判断，无法精确对tag原始字符串进行过滤，故在消息消费端拉取到消息后，还需要对消息的原始tag字符串进行比对，如果不同，则丢弃该消息，不进行消息消费(这一步需不需要用户处理 *)
+    - SQL92的过滤方式
+        - BloomFilter
+        
+- 负载均衡
+    - RocketMQ中的负载均衡都在Client端完成
+    - Producer端发送消息的负载均衡 * 
+        - sendLatencyFaultEnable开关变量，如果开启，在随机递增取模的基础上，再过滤掉not available的Broker代理
+        - latencyFaultTolerance是指对之前失败的，按一定的时间做退避,实现消息发送高可用的核心关键所在
+    - Consumer端订阅消息的负载均衡
+        - Consumer端的两种消费模式（Push/Pull）都是基于拉模式来获取消息的
+        - 而在Push模式只是对pull模式的一种封装，其本质实现为消息拉取线程在从服务器拉取到一批消息后，然后提交到消息消费线程池后，又“马不停蹄”的继续向服务器再次尝试拉取消息。如果未拉取到消息，则延迟一下又继续拉取
+        - 均需要Consumer端在知道从Broker端的哪一个消息队列—队列中去获取消息。因此，有必要在Consumer端来做负载均衡，即Broker端中多个MessageQueue分配给同一个ConsumerGroup中的哪些Consumer消费
+        
+        - Consumer端的心跳包发送
+            - 向RocketMQ集群中的所有Broker实例发送心跳包(消息消费分组名称、消息通信模式-广播或集群)，所有Broker实例从Name Server获取
+        - Consumer端实现负载均衡的核心类—RebalanceImpl
+            - 该Topic主题下的消息消费队列集合(ConsumeQueue)
+            - 该消费组下消费者Id列表
+            - processQueueTable
+        - 集群模式
+            - 消息消费队列在同一消费组不同消费者之间的负载均衡，其核心设计理念是在一个消息消费队列在同一时间只允许被同一消费组内的一个消费者消费，一个消息消费者能同时消费多个消息队列
+- 事务消息
+    - 本地事务和发送消息是一个原子操作
+    - 采用了2PC的思想来实现了提交事务消息，同时增加一个补偿逻辑来处理二阶段超时或者失败的消息
+    
+    - 2PC
+        - 一阶段发送的消息(half消息)对用户是不可见的，
+            - 对消息的Topic和Queue等属性进行替换(topic替换为特殊内部topic)，同时将原来的Topic和Queue信息存储到消息的属性中，正因为消息主题被替换，故消息并不会转发到该原主题的消息消费队列，消费者无法感知消息的存在，不会消费; 由于消费组未订阅该主题，故消费端无法消费half类型的消息;
+                - 延时消息的实现机制类似原理
+        - 二阶段
+            - Op消息(commit or rollback发送的消息)
+                - Op消息标识事务消息已经确定的状态（Commit或者Rollback）。如果一条事务消息没有对应的Op消息，说明这个事务的状态还无法确定（可能是二阶段失败了）
+                - 引入Op消息后，事务消息无论是Commit或者Rollback都会记录一个Op操作
+                - RocketMQ将Op消息写入到全局一个特定的Topic，这个Topic是一个内部的Topic（像Half消息的Topic一样），不会被用户消费
+                - Op消息的内容为对应的Half消息的存储的Offset，这样通过Op消息能索引到Half消息进行后续的回查操作
+            - commit
+                - 需要让消息对用户可见
+                - 需要构建出Half消息的ConsumeQueue二级索引
+                - 读取出Half消息，并将Topic和Queue替换成真正的目标的Topic和Queue，之后通过一次普通消息的写入操作来生成一条对用户可见的消息
+            - rollback
+                - 本身一阶段的消息对用户是不可见的，其实不需要真正撤销消息（实际上RocketMQ也无法去真正的删除一条消息，因为是顺序写文件的）;但是区别于这条消息没有确定状态（Pending状态，事务悬而未决），需要一个操作来标识这条消息的最终状态  
+        - 处理二阶段失败(补偿机制)
+            - 回查
+                - Broker端通过对比Half消息和Op消息进行事务消息的回查并且推进CheckPoint（记录那些事务消息的状态是确定的）
+                - Broker端对未确定状态的消息发起回查，将消息发送到对应的Producer端（同一个Group的Producer），由Producer根据消息来检查本地事务的状态，进而执行Commit或者Rollback
+                - rocketmq并不会无休止的的信息事务状态回查，默认回查15次，如果15次回查还是无法得知事务状态，rocketmq默认回滚该消息
+                - RocketMQ会开启一个定时任务，从一阶段特殊内部topic中拉取消息进行消费，根据生产者组获取一个服务提供者发送回查事务状态请求，根据事务状态来决定是提交或回滚消息
+                
+- 消息查询
+    - MessageId查询消息
+        - 读取消息的过程用其中的 commitLog offset 和 size 去 commitLog 中找到真正的记录并解析成一个完整的消息返回
+    - Message Key查询消息
+        - 基于RocketMQ的IndexFile索引文件来实现，类似JDK中HashMap的实现
+        - 文件大小是固定的，等于40+500W*4+2000W*20= 420000040个字节大小
+        - 如果消息的properties中设置了UNIQ_KEY这个属性，就用 topic + “#” + UNIQ_KEY的value作为 key 来做写入操作。如果消息设置了KEYS属性（多个KEY以空格分隔），也会用 topic + “#” + KEY 来做索引
+        - IndexFile索引文件存放的真正的 key 是有 topic前缀的
+        - 读取消息的过程就是用topic和key找到IndexFile索引文件中的一条记录，根据其中的commitLog offset从CommitLog文件中读取消息的实体内容
