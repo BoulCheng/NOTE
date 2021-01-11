@@ -154,4 +154,51 @@ explain select * from explain_test union select * from explain_test
     
     
     
-    
+- 流式查询
+    - 流式查询时逐条获取，待应用处理完再去拿下一条数据
+    - 设置流式查询 statement.setFetchSize(Integer.MIN_VALUE);
+    - 在流式查询下不能进行多次查询获取多个ResultSet进行操作
+        - 会抛异常 java.sql.SQLException: Streaming result set com.mysql.cj.protocol.a.result.ResultsetRowsStreaming@21775abc is still active. No statements may be issued when any streaming result sets are open and in use on a given connection. Ensure that you have called .close() on any active streaming result sets before attempting more queries.
+    - mysql本身并没有FetchSize方法, 它是通过使用CS阻塞方式的网络流控制实现服务端不会一下发送大量数据到客户端撑爆客户端内存， 这样带来的问题：如果使用了流式查询，一个MySQL数据库连接同一时间只能为一个ResultSet对象服务，并且如果该ResultSet对象没有关闭，势必会影响其他查询对数据库连接的使用！如果应用对数据库连接的消耗要求严苛，那么流式查询就不再适合。
+    - sharding-sphere由于做的是流式查询，但无法在同一个数据库connection中拿到多个resultSet，再做结果集合并；需要每个结果集单独使用一个Connection获取resultSet
+    - code 
+        ```
+        try (Connection conn = dataSource.getConnection(dsi)) {
+                        try (Statement statement = conn.createStatement()) {
+                            statement.setFetchSize(Integer.MIN_VALUE);
+                            ResultSet rs = statement.executeQuery("");
+                            rs.next();
+                            Long l = rs.getLong(1);
+        
+        
+        
+                            ResultSet rs2;
+                            Long l2;
+                            Object o1;
+                            try {
+                                rs2 = statement.executeQuery("");
+                                rs2.next();
+                                l2 = rs2.getLong(1);
+                                o1 = rs.getObject(2);// 抛异常 java.sql.SQLException: Operation not allowed after ResultSet closed
+                            } catch (SQLException e) {
+                                e.printStackTrace();
+                            }
+                            try {
+                                // 在流式查询下不能进行多次查询获取多个ResultSet进行操作 
+                                Statement statement2 = conn.createStatement();
+                                statement2.setFetchSize(Integer.MIN_VALUE);
+                                try {
+                                    rs = statement2.executeQuery("");// 抛异常  java.sql.SQLException: Streaming result set com.mysql.cj.protocol.a.result.ResultsetRowsStreaming@21775abc is still active. No statements may be issued when any streaming result sets are open and in use on a given connection. Ensure that you have called .close() on any active streaming result sets before attempting more queries.
+                                } catch (SQLException e) {
+                                    e.printStackTrace();
+                                }
+                            } catch (SQLException e) {
+                                e.printStackTrace();
+                            }
+        
+                        }
+                    }
+        ```
+    - MySQL Connector/J 5.1 Developer Guide
+        - There are some caveats with this approach. You must read all of the rows in the result set (or close it) before you can issue any other queries on the connection, or an exception will be thrown. 也就是说当通过流式查询获取一个ResultSet后，在你通过next迭代出所有元素之前或者调用close关闭它之前，你不能使用同一个数据库连接去发起另外一个查询，否者抛出异常（第一次调用的正常，第二次的抛出异常）
+    - ResultSet
