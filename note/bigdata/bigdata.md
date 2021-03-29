@@ -1,0 +1,88 @@
+- 分布式计算
+    - 大数据时代到来后，一些传统的数据处理方法无法满足大数据的处理需求，将一组计算机组织到一起形成一个集群，利用集群的力量来处理大数据的工程实践逐渐成为主流方案。这种使用集群进行计算的方式被称为分布式计算，当前几乎所有的大数据系统都是在集群进行分布式计算
+    - 分布式计算的概念听起来很高深，其背后的思想十分朴素，即分而治之（Divide and Conquer），又被称为分治法；基本上都是将计算拆分，把子问题放到多台机器上，分而治之地计算求解
+    - 分布式计算在科研界已经有很多比较成熟的方案，其中比较有名的有消息传递接口（Message Passing Interface，MPI）和MapReduce
+        - MPI
+            - 分治法将问题切分成子问题，在不同节点上分而治之地求解，MPI提供了一个在多进程多节点间进行数据通信的方案，因为绝大多数情况下，在中间计算和最终合并的过程中，需要对多个节点上的数据进行交换和同步
+            - MPI中最重要的两个操作为数据发送（Send）和数据接收（Recv），Send表示将本进程中某块数据发送给其他进程，Recv表示接收其他进程的数据
+        - MapReduce
+            - 为了解决分布式计算学习和使用成本高的问题，研究人员提出了更简单易用的MapReduce编程模型。MapReduce是Google 2004年提出的一种编程范式，比起MPI将所有事情交给程序员控制不同，MapReduce编程模型只需要程序员定义两个操作：map和reduce
+            - 比起MPI，MapReduce编程模型将更多的中间过程做了封装，程序员只需要将原始问题转化为更高层次的API，至于原始问题如何切分为更小的子问题、中间数据如何传输和交换、如何将计算伸缩扩展到多个节点等一系列细节问题可以交给大数据框架来解决。因此，MapReduce相对来说学习门槛更低，使用更方便，编程开发速度更快。
+            - 假设我们需要大批量地制作三明治，三明治的每种食材可以分别单独处理，map阶段将原材料在不同的节点上分别进行处理，生成一些中间食材，shuffle阶段将不同的中间食材进行组合，reduce最终将一组中间食材组合成为三明治成品。可以看到，这种map + shuffle + reduce的方式就是分而治之思想的一种实现
+            - 基于MapReduce编程模型，不同的团队分别实现了自己的大数据框架：Hadoop是最早的一种开源实现，如今已经成为大数据领域的业界标杆，之后又出现了Spark和Flink。这些框架提供了编程接口和API，辅助程序员存储、处理和分析大数据。
+            
+- 流处理
+    - 数据其实是以流（Stream）的方式持续不断地产生着，流处理（Stream Processing）就是对数据流进行处理
+    - 从时间维度上来讲，数据源源不断地产生，形成一个无界的数据流（Unbounded Stream）。数据流中的某段有界数据流（Bounded Stream）可以组成一个数据集。我们通常所说的对某份数据进行分析，指的是对某个数据集进行分析            
+- 批处理（Batch Processing）是对一批数据进行处理
+    - 当前应用最为广泛的当属数据仓库的ETL（Extract Transform Load）数据转化工作，如以Oracle为代表的商业数据仓库和以Hadoop/Spark为代表的开源数据仓库 
+- Hadoop、Spark 、Flink
+    - MapReduce编程模型的提出为大数据分析和处理开创了一条先河，之后陆续涌现出了Hadoop、Spark和Flink等大数据框架
+    - Hadoop
+        - Hadoop的创始人受MapReduce编程模型等一系列论文的启发，对论文中提及的思想进行了编程实现
+        - Hadoop不仅仅是整个大数据领域的先行者和领导者，更形成了一套围绕Hadoop的生态系统，Hadoop和它的生态是绝大多数企业首选的大数据解决方案。
+        - Hadoop生态中的组件众多，
+            - 其核心组件主要有三个：这三大组件中，数据存储在HDFS上，由MapReduce负责计算，YARN负责集群的资源管理
+                - Hadoop MapReduce：Hadoop版本的MapReduce编程模型，可以处理海量数据，主要面向批处理。
+                - HDFS：HDFS全称为Hadoop Distributed File System，是Hadoop提供的分布式文件系统，有很好的扩展性和容错性。
+                - YARN：YARN是Yet Another Resource Negotiator的缩写，是Hadoop生态系统中的资源调度器，可以管理一个Hadoop集群，并为各种类型的大数据任务分配计算资源。
+            - Hadoop生态圈还有很多其他著名的组件：
+                - Hive：借助Hive，用户可以编写SQL语句来查询HDFS上的结构化数据，SQL会被转化成MapReduce执行。
+                - HBase：HDFS上的数据量非常庞大，但访问和查询速度比较慢，HBase可以提供给用户毫秒级的实时查询服务，是一个基于HDFS的分布式数据库。
+                - Storm：Strom是一款实时计算框架，主要负责流处理。
+                - Zookeeper：Hadoop生态圈很多组件使用动物来命名，形成了一个大型动物园，Zookeeper是这个动物园的管理者，主要负责分布式环境的协调
+    - Spark
+        - Spark 是一款大数据计算框架，其初衷是改良Hadoop MapReduce的编程模型和执行速度
+        - Hadoop的map和reduce之间的中间结果都需要落地到磁盘上，而Spark尽量将大部分计算放在内存中，加上Spark的有向无环图优化，在官方的基准测试中，Spark比Hadoop快一百倍以上。
+        - Spark的核心在于计算，主要目的在于优化Hadoop MapReduce计算部分，在计算层面提供更细致的服务，
+        - Spark并不能完全取代Hadoop，实际上，Spark融入到了Hadoop生态圈，成为其中的重要一元。一个Spark任务很可能依赖HDFS上的数据，向YARN来申请计算资源，将HBase作为输出结果的目的地。当然，Spark也可以不用依赖这些Hadoop组件，独立地完成计算
+        - Spark主要面向批处理需求，因其优异的性能和易用的接口，Spark已经是批处理界绝对的王者
+        - Spark Streaming提供了流处理的功能，它的流处理主要基于mini-batch的思想，即将输入数据流拆分成多个批次，每个批次使用批处理的方式进行计算。因此，Spark是一款批量和流式于一体的计算框架
+    - Flink
+        - Flink主要面向流处理，如果说Spark是批处理界的王者，那么Flink就是流处理领域的冉冉升起的新星
+        - 在Flink之前，不乏流式处理引擎，比较著名的有Storm、Spark Streaming，但某些特性远不如Flink
+        - Storm只支持"at least once"和"at most once"，即数据流里的事件投递只能保证至少一次或至多一次，不能保证只有一次
+        - Spark Streaming使用mini-batch的思想，每次处理一小批数据，一小批数据包含多个事件，以接近实时处理的效果。因为它每次计算一小批数据，因此总有一些延迟
+        - Flink是与上述两代框架都不太一样的新一代计算框架，它是一个支持在有界和无界数据流上做有状态计算的大数据引擎
+        - 支持"exactly once"
+        - 与Spark类似，Flink目前主要面向计算，并且可以与Hadoop生态高度集成
+        - 之前提到，数据都是以流的形式产生的。数据可以分为有界（bounded）和无界（unbounded），批量处理其实就是一个有界的数据流，是流处理的一个特例。Flink基于这种思想，逐步发展成一个可支持流式和批量处理的大数据框架
+    - 大数据一般基于分而治之的思想，分布式地进行计算
+    
+- aliyun
+    - DataWorks     
+        - DataWorks（数据工场，原大数据开发套件）是阿里云重要的PaaS（Platform-as-a-Service）平台产品，为您提供数据集成、数据开发、数据地图、数据质量和数据服务等全方位的产品服务
+            - 数据集成
+                - 离线数据同步 vs 实时数据同步
+                    - 离线同步，相当于某个时候对源数据做一个快照。 而实时同步，一般是通过监控源数据变更操作，通过在目标端实时重放操作，从而达到实时同步的目的（如mysql通过Binlog)
+        - DataWorks支持多种计算和存储引擎服务    
+            - 离线计算MaxCompute
+                - MaxCompute(原名ODPS)
+                    - 提供海量数据存储和计算服务
+                    - 大数据计算服务MaxCompute（原名ODPS）是一种快速、完全托管的EB级数据仓库解决方案
+                    - MaxCompute致力于批量结构化数据的存储和计算，提供海量数据仓库的解决方案及分析建模服务
+                    - 由于单台服务器的处理能力有限，海量数据的分析需要分布式的计算模型
+                    - MaxCompute为您提供完善的数据导入方案以及多种经典的分布式计算模型，您可以不必关心分布式计算和维护细节，便可轻松完成大数据分析
+                    - DataWorks和MaxCompute关系紧密，DataWorks为MaxCompute提供一站式的数据同步、业务流程设计、数据开发、管理和运维功能
+                    - [https://help.aliyun.com/document_detail/27800.htm?spm=a2c4g.11186623.2.11.733e5b59zi3QZN#concept-qbk-1kv-tdb]
+                - MaxCompute(MaxCompute以数据为中心，内建多种计算模型)
+                    - 大规模计算存储
+                        - MaxCompute适用于100GB以上规模的存储及计算需求，最大可达EB级别
+                    - 多种计算模型
+                        - 支持SQL、MapReduce、UDF（Java/Python）、Graph、基于DAG的处理、交互式、内存计算、机器学习等计算类型及MPI迭代类算法。简化了企业大数据平台的应用架构
+                        - SQL
+                            - MaxCompute以表的形式存储数据，支持多种数据类型版本说明，并对外提供SQL查询功能
+                            - 您可以将MaxCompute作为传统的数据库软件操作，但其却能处理TB、PB级别的海量数据
+                            - MaxCompute SQL不支持事务、索引，也不支持Update或Delete操作。
+                            - MaxCompute的SQL语法与Oracle、MySQL有一定差别
+                            - MaxCompute主要用于100GB以上规模的数据计算，因此MaxCompute SQL最快支持在分钟或秒钟级别完成查询返回结果，但无法在毫秒级别返回结果
+                            - MaxCompute SQL的优点是学习成本低，您不需要了解复杂的分布式计算概念
+                        - UDF
+                            - 即用户自定义函数。
+                                - 自定义的函数jar包上传到DataWorks的资源(xddw-udf.jar) 指定类(bigdata.dian.so.ISOTimeUDF)创建函数 使用udf  
+                            - MaxCompute提供了很多内建函数来满足计算需求
+                                - MaxCompute SQL提供了常见的日期函数
+                        - MapReduce：MaxCompute MapReduce是MaxCompute提供的Java MapReduce编程模型，它可以简化开发流程，更为高效。使用MaxCompute MapReduce，需要对分布式计算概念有基本了解，并有相对应的编程经验。MaxCompute MapReduce为您提供Java编程接口。
+                    - SDK是MaxCompute提供给开发者的工具包，当前支持Java SDK及Python SDK
+            - 实时计算（基于Flink）
+            - 流处理 流计算
