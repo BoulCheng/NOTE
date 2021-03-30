@@ -1,0 +1,21 @@
+    
+#### MySQL 的自增主键不单调也不连续
+- 不单调
+    - MySQL 5.7 版本之前在内存中存储 AUTO_INCREMENT 计数器，实例重启后会根据表中的数据重新设置，在删除记录后重启就可能出现重复的主键，该问题在 8.0 版本使用重做日志解决，保证了主键的单调性
+    - 存在 主键为10，11的记录，然后删除主键为11的记录，此时AUTO_INCREMENT=11，mysql实例重启后会根据表中的数据重新设置AUTO_INCREMENT=10,出现重复的主键(11)，当被删除的主键被外部系统引用时才会影响数据的一致性
+    - MySQL 8.0 中，AUTO_INCREMENT 计数器的初始化行为发生了改变，每次计数器的变化都会写入到系统的重做日志（Redo log）并在每个检查点存储在引擎私有的系统表中，当 MySQL 服务被重启或者处于崩溃恢复时，它可以从持久化的检查点和重做日志中恢复出最新的 AUTO_INCREMENT 计数器，避免出现不单调的主键同时也解决删除可能出现系统问题
+    - In MySQL 8.0, this behavior is changed. The current maximum auto-increment counter value is written to the redo log each time it changes and is saved to an engine-private system table on each checkpoint. These changes make the current maximum auto-increment counter value persistent across server restarts
+- 不连续
+    - 并发事务
+        - 事务 1 向数据库中插入 id = 10 的记录，事务 2 向数据库中插入 id = 11 和 id = 12 的两条记录，
+        - 如果在最后事务 1 由于插入的记录发生了唯一键冲突导致了回滚，而事务 2 没有发生错误而正常提交，在这时会发现当前表中的主键出现了不连续的现象，后续新插入的数据也不再会使用 10 作为记录的主键
+        - InnoDB 存储引擎提供的 innodb_autoinc_lock_mode 配置控制的，该配置决定了获取 AUTO_INCREMENT 计时器时需要先得到的锁，该配置存在三种不同的模式
+            - 连续模式 innodb_autoinc_lock_mode = 1 默认
+                - INSERT ... SELECT、REPLACE ... SELECT 以及 LOAD DATA 等批量的插入操作需要获取表级别的 AUTO_INCREMENT 锁，该锁会在当前语句执行后释放
+                - 简单的插入语句（预先知道插入多少条记录的语句）只需要获取获取 AUTO_INCREMENT 计数器的互斥锁并在获取主键后直接释放，不需要等待当前语句执行完成
+                - 目的是保证 AUTO_INCREMENT 的获取不会导致线程竞争，而不是保证 MySQL 中主键的连续
+                - MySQL 插入数据获取 AUTO_INCREMENT 时不会使用事务锁，而是会使用互斥锁，并发的插入事务可能出现部分字段冲突导致插入失败，想要保证主键的连续需要串行地执行插入语句
+    - 解决
+        - 并发 串行执行所有包含插入操作的事务，也就是使用数据库的最高隔离级别 —— 可串行化（Serialiable）
+        - 无并发 完全串行的插入
+    - 牺牲主键的连续性来支持数据的并发插入，最终提高了 MySQL 服务的吞吐量
