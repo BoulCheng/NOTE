@@ -1,3 +1,23 @@
+
+- netty NIO传输 VS Epoll传输
+    - netty NIO传输
+        - 基于 java nio
+            - 会使用 Linux epoll
+        - jdk为了在所有操作系统提供相同的功能做出了妥协
+        - NioEventLoop 解决了jdk nio epoll cpu 空轮询的bug
+        - Netty的解决策略：
+          - [https://www.cnblogs.com/JAYIT/p/8241634.html]
+          - [http://songkun.me/2019/07/26/2019-07-26-java-nio-epoll-bug-and-netty-solution/]
+          - 1) 根据该BUG的特征，首先侦测该BUG是否发生；
+            - 一个参数是Selector#select返回值为0的计数，第二个是多长时间，整体意思就是控制在多长时间内，如果Selector.select不断返回0，说明进入了JVM的bug的模式
+          - 接着开启一个新的Selector，并将原有的SelectionKey的事件全部转移到了新的Selector中，老的问题Selector关闭，使用新建的Selector替换
+              - 将问题Selector上注册的Channel转移到新建的Selector上；
+    - Epoll传输
+        - netty 使用 Linux epoll 的独特方式，优于JDK NIO 使用epoll
+        - netty 直接调用 jni 方法( call JNI methods ) 驱动epoll() 
+        - netty native 方法 
+            - EpollEventLoop、Native、NativeStaticallyReferencedJniMethods
+            
 - ByteBuf 的使用模式
     - 堆缓冲区
     - 直接缓冲区：默认地，当所运行的环境具有sun.misc.Unsafe支持时，返回基于直接内存存储的ByteBuf，否则 返回基于堆内存存储的 ByteBuf;当指定使用 PreferHeapByteBufAllocator 时，则只会返回基 于堆内存存储的 ByteBuf
@@ -64,3 +84,50 @@
     
 - 堆内池化bytebuf
     - .....
+    
+    
+    
+    
+    
+    
+    
+- 引导    
+    - Bootstrap vs ServerBootstrap
+    - ServerBootstrap
+        - 服务端有两组不同Channel  
+            - 一个NioServerSocketChannel
+            - 多个NioSocketChannel
+        - bossGroup 分配一个EventLoop给 NioServerSocketChannel 处理传入的连接请求并创建 NioSocketChannel
+        - workerGroup 已经接受的连接对应一个 NioSocketChannel，为每个NioSocketChannel分配一个EventLoop处理该连接的I/O事件
+        
+- channel的创建 ChannelHandler ChannelHandlerPipeline ChannelHandlerContext 之间关系
+    - ChannelHandlerPipeline 拦截过滤器设计模式 如何过滤 ChannelInBoundHandler ChannelOutBoundHandler 
+- netty实践使用代码
+
+
+    
+- Channel 主要api
+    - writer
+        - 等待被冲刷
+    - flush
+        - 将数据冲刷到底层传输
+    - 多线程调用writerAndFlush 可以保证消息顺序被发送
+    
+- 套接字非阻塞系统调用(非阻塞I/O?) vs NIO
+- NIO vs I/O多路复用    
+
+        
+- zero拷贝 
+    - 数据不需要从内核空间复制到用户空间
+        - 比如将数据从文件系统移动到网络接口，实现高效网络发送数据
+        
+- ioRatio
+    - [https://bbs.huaweicloud.com/blogs/137090]
+    - [https://zhuanlan.zhihu.com/p/95301195]
+- 粘包
+
+
+
+- 具体的编解码器 和 ChannelIn(Out)BoundHandler
+    - [https://blog.csdn.net/woshizw27/article/details/87999137]
+    - ChannelHandler的主要用途
