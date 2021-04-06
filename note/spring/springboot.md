@@ -41,3 +41,57 @@
         - 使用该类加载器加载 SpringPracticeApplication 类，然后调用其main方法
         - 将该自定义类加载器设置为 线程上下文类加载器 
              - 在spring容器启动初始化容器时通过该线程上下文类加载器加载依赖jar包中的类和应用程序本身的类
+    - @see org.springframework.util.ClassUtils#getDefaultClassLoader() 优先获取线程上下文类加载器 contextClassLoader
+    
+- starter
+    - 让模块开发更加独立化，相互间依赖更加松散以及可以更加方便地集成
+    - 一个标准的Starter， 独立业务模块， 这个模块并不是自己部署而是运行在依赖它的主模块的主函数中
+        - pom
+            ```
+                <dependency>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-autoconfigure</artifactId>
+                </dependency>
+            
+            ```
+        - 添加自动配置项
+            - HelloServiceAutoConfiguration
+                - 在 ComponentScan 注解中加入这个模块的容器扫描路径
+                - 它存在的目的仅仅是通过注解进行配置的声明
+        - 声明这个配置文件的路径   
+            - 在 Spring 的根路径下建立 META-INF/spring.factories 文件
+                - org.springframework.boot.autoconfigure.EnableAutoConfiguration=com.spring.study.HelloServiceAutoConfiguration
+                  
+    - 使用
+        - 直接引用依赖
+        
+- 自动配置
+    - MybatisAutoConfiguration
+        - 
+
+- Starter 自动化配置原理
+    - springboot 的全局开关 @SpringBootApplication 
+        - -> @org.springframework.boot.autoconfigure.EnableAutoConfiguration.EnableAutoConfiguration
+            - -> org.springframework.boot.autoconfigure.AutoConfigurationImportSelector  (DeferredImportSelector extends org.springframework.context.annotation.ImportSelector)
+                - AutoConfigurationImportSelector 与 Spring 的整合过程，在这个调用链中最核心的就是 Spring Boot使用 了 Spring 提供的 BeanDefinitionRegistryPostProcessor extends BeanFactoryPostProcessor 扩展点并实现了 ConfigurationClassPostProcessor 类(ConfigurationClassPostProcessor通过 ConfigurationClassParser 处理ImportSelector)，从而实现了 spring之上的一系列逻辑扩展
+            - Spring启动的时候会扫描所有 JAR 中的 spring.factories定义的类
+            - ConfigurationClassParser 会处理自动配置类 如处理 @ComponentScan、@Configuration等注解
+- @Conditional Condition
+    - 根据满足的某一个特定条件创建一个特定的bean。 
+    - 比方说， 当某一个 JAR 包在一个类路径下 的时候，会自动配置一个或多个 bean;或者只有某个 bean 被创建后才会创建另外一个 bean。 
+    - 总的来说，就是根据特定条件来控制 bean 的创建行为，这样我们可以利用这个特性进行一些自动的配置。
+    - 属性自动化配置 @ConditionalOnProperty  OnPropertyCondition
+        - 尝试使用 PropertyResolver 来验证对应的属性是 否存在， 如果不存在则验证不通过，因为 PropertyResolver 中包含了所有的配置属性信息 
+        - 属性配置
+            - Value注解直接将属性赋值给类的变量
+            - 配置文件 
+        - PropertyResolver初始化逻辑
+            - Spring的属性处理逻辑
+                - 初始化逻辑以实现 PropertySourcesPlaceholderConfigurer(BeanFactoryPostProcessor) 类的 postProcessBeanFactory 函数作为入口
+    - ConditionalOnBean \ ConditionalOnMissingBean
+        - Bean的存在与否作为条件
+    - ConditionalOnClass\ConditionalOnMissingClass
+        - Class的存在与否作为条件 
+- 集成 Tomcat
+    - ServletWebServerApplicationContext
+        - 重写onRefresh、finishRefresh 启动tomcat
