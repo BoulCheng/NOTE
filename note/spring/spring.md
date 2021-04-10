@@ -50,6 +50,68 @@
     
 
 - 异步注解@Async为什么会产生循环依赖问题；异步注解是不是一定会产生循环依赖问题；异步注解产生的循环依赖如何解决，解决的原理是什么；为什么spring要这么设计异步注解    
+
+
+#### 注解
+
+- @AliasFor
+    - AliasFor可以定义一个注解中的两个属性互为别名
+    - 不仅是一个注解内不同属性可以声明别名，不同注解的属性也可以声明别名（注解可以作用于注解）
+        ```
+          @Component
+          public @interface Service {
+              @AliasFor(
+                  annotation = Component.class
+              )
+              String value() default "";
+          }
+      
+      
+          @Service("serviceAlias")
+          public class ServiceAlias {
+          
+              public static void main(String[] args) {
+                  Component component = AnnotationUtils.getAnnotation(ServiceAlias.class, Component.class);
+                  System.out.println(component);//@org.springframework.stereotype.Component(value=)
+                
+                Component component2 = AnnotatedElementUtils.getMergedAnnotation(ServiceAlias.class, Component.class);
+                  System.out.println(component2);        //@org.springframework.stereotype.Component(value=serviceAlias)
+    
+            
+              }
+          }
+      
+        ```
+        - @Service#value为@Component#value的别名，@Service#value的值可以映射到@Component#value。（这里将@Service，@Component看做一种特殊的继承关系，@Component是父注解，@Service是子注解，@Service#value覆盖@Component#value）
+        - 虽然ServiceAlias上只有@Service，但通过AnnotationUtils.getAnnotation方法会解析得到@Component，而通过AnnotatedElementUtils.getMergedAnnotation方法还可以将@Service#value的值赋给@Component#value
+         - Spring内部实现并不复杂，在java中，注解是使用动态代理类实现，Spring中同理
+         - @Repeatable表示当配置了多个@ComponentScan时，@ComponentScan可以被@ComponentScans代替
+              ```
+              @ComponentScan("com.binecy.bean")
+              @ComponentScan("com.binecy.service")
+              public class ComponentScansService {
+                  public static void main(String[] args) {
+                      ComponentScans scans = ComponentScansService.class.getAnnotation(ComponentScans.class);
+                      for (ComponentScan componentScan : scans.value()) {
+                          System.out.println(componentScan.value()[0]);
+                      }
+                  }
+              }
+              
+              ```
+           
+
+- @Import 
+    - 没有把某个类注入到IOC容器中，但在运用的时候需要获取该类对应的bean，此时就需要用到@Import注解
+    - 功能类似 @Bean  
+
+- @EnableConfigurationProperties ConfigurationProperties
+    - 两种方式都是将被  @ConfigurationProperties 修饰的类，加载到 Spring Env 中
+        - @ConfigurationProperties + @Component
+        - @ConfigurationProperties + EnableConfigurationProperties           
+           
+           
+               
 ```
 Error starting ApplicationContext. To display the conditions report re-run your application with 'debug' enabled.
 2020-12-15 10:23:56,206 [main] ERROR o.s.boot.SpringApplication [SpringApplication.java : 826] - Application run failed
