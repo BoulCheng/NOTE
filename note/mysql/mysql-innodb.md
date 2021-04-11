@@ -45,7 +45,65 @@
                 - 二级索引的排他锁会导致该行对应的聚簇索引被锁  
             - For other search conditions, and for non-unique indexes, InnoDB locks the index range scanned, using gap locks or next-key locks to block insertions by other sessions into the gaps covered by the range.
         - UPDATE ... WHERE ... sets an exclusive next-key lock on every record the search encounters. However, only an index record lock is required for statements that lock rows using a unique index to search for a unique row.
-          
+##### 锁 [https://dev.mysql.com/doc/refman/5.7/en/innodb-locking.html]
+- 多粒度锁定
+    - 允许事务在行级上的锁和表级上的锁同时存在
+    - 意向锁
+        - 为了支持多粒度锁定
+        - 不与行级锁冲突(不兼容)的表级锁
+            - [https://dev.mysql.com/doc/refman/5.7/en/innodb-locking.html#innodb-intention-locks]
+        - 揭示一个事务接下来对表中一(多)行将要请求的锁类型
+            - Intention locks are table-level locks that indicate which type of lock (shared or exclusive) a transaction requires later for a row in a table
+            - 在为数据行加共享 / 排他锁之前，会先获取该数据行所在在数据表的对应意向锁
+        - 如果另一个任务试图在该表级别上应用共享或排它锁，则受到由第一个任务控制的表级别意向锁的阻塞。第二个任务在锁定该表前不必检查各个页或行锁，而只需检查表上的意向锁 
+            - 如事务在试图对表加共享锁的时候，必须保证当前没有其他事务持有该表的排他锁且当前没有其他事务持有该表中任意一行的排他锁，为了检测是否满足后者，事务必须在确保该表不存在任何排他锁的前提下，去检测表中的每一行是否存在排他锁。但是有了意向锁可以直接检查意向锁
+        - Intention locks do not block anything except full table requests (for example, LOCK TABLES ... WRITE). The main purpose of intention locks is to show that someone is locking a row, or going to lock a row in the table
+- 表锁
+    - 哪些情况会产生
+        -  LOCK TABLES ... WRITE takes an exclusive lock (an X lock) on the specified table
+- 行锁
+    - InnoDB performs row-level locking in such a way that when it searches or scans a table index, it sets shared or exclusive locks on the index records it encounters. Thus, the row-level locks are actually index-record locks    
+- 锁算法
+    - Record Lock
+        - 读提交隔离级别下
+        - 锁住索引记录
+    - Gap Lock
+        - are used in some transaction isolation levels and not others. 
+            - 可重复读隔离级别下
+            - disabled
+                -  change the transaction isolation level to READ COMMITTED
+        - Gap locking is not needed for statements that lock rows using a unique index to search for a unique row. (This does not include the case that the search condition includes only some columns of a multiple-column unique index; in that case, gap locking does occur.) 
+        - only purpose is to prevent other transactions from inserting to the gap
+            - 比如P268，间隙锁锁定 (3, 6)，那么在索引的B+树节点键值3到6之间就不能再插入新的节点
+        - There is no difference between shared and exclusive gap locks. They do not conflict with each other, and they perform the same function
+        
+    - Next-Key Lock
+        - A next-key lock is a combination of a record lock on the index record and a gap lock on the gap before the index record.
+        - a next-key lock is an index-record lock plus a gap lock on the gap preceding the index record.
+            - A next-key lock on an index record also affects the “gap” before that index record 
+            -  If one session has a shared or exclusive (Next-key td)lock on record R in an index, another session cannot insert a new index record in the gap immediately before R in the index order
+            - Suppose that an index contains the values 10, 11, 13, and 20. The possible next-key locks for this index cover the following intervals, where a round bracket denotes exclusion of the interval endpoint and a square bracket denotes inclusion of the endpoint:
+            ```
+            (negative infinity, 10]
+            (10, 11]
+            (11, 13]
+            (13, 20]
+            (20, positive infinity)
+            ```
+            - For the last interval,The supremum is not a real index record, so, in effect, this next-key lock locks only the gap following the largest index value
+        - 可重复读隔离级别下，查询都采用这种锁定算法
+            - InnoDB operates in REPEATABLE READ transaction isolation level. In this case, InnoDB uses next-key locks for searches and index scans, which prevents phantom rows
+        - 解决幻读
+- 死锁
+    - 多个事务相互等待锁资源(等待其他事务释放锁以获得锁)
+    - 采用等待图(wait-for graph)的方式来进行死锁检测
+        - 事务为图中的节点，节点会指向其他节点
+        - 图中存在回路则发生死锁
+        - 死锁检测采用深度优先算法(td)          
+- 锁升级
+    - InnoDB不存锁升级
+    - InnoDB不是根据每个记录产生行锁，根据事务访问的每个页对锁进行管理，即根据页加锁
+    - 一个事务锁住一个页中的一个记录还是多个记录，开销通常是一致的(td)        
 #### practice
 - pre
 ```
@@ -195,6 +253,22 @@ commit;
 -- select * from Y where a = 5 LOCK IN SHARE MODE;; -- 锁住
 -- commit;
 
+```
+
+```
+-- t1
+BEGIN;
+select * from dw_term_type where id = 2 for update;
+select * from dw_term where type = 2;
+delete from dw_term_type where id = 1;
+commit
+
+
+-- t2
+BEGIN;
+select * from dw_term_type where id = 2 for update;
+INSERT INTO `dw_term` (id, `term`,`full_name`,`desc`,`type`,gmt_create,creator,gmt_update) VALUES (2,'2','2','2',2,2,2,2);
+commit;
 ```
 
 
