@@ -145,3 +145,132 @@ org.springframework.beans.factory.BeanCurrentlyInCreationException: Error creati
 ```
 java -Dspring.profiles.active=pre -Dfile.encoding=UTF8 -Dsun.jnu.encoding=UTF8 -XX:HeapDumpPath=/home/admin/logs/oomDump.hprof -XX:+HeapDumpOnOutOfMemoryError -XX:+HeapDumpBeforeFullGC -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps -XX:+PrintHeapAtGC -XX:+PrintTenuringDistribution -Xloggc:/home/admin/logs/gc_%p.log -Drocketmq.client.logRoot=/home/admin/logs/rocketmq.log -Drocketmq.client.logLevel=WARN -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005 -Xms1331m -Xmx1331m -XX:+UseParallelOldGC -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20 -XX:GCTimeRatio=99 -XX:AdaptiveSizePolicyWeight=90 -XX:MaxMetaspaceSize=256m -XX:ParallelGCThreads=1 -Djava.util.concurrent.ForkJoinPool.common.parallelism=1 -XX:CICompilerCount=2 -XX:+ExitOnOutOfMemoryError -cp . -jar /deployments/peek-data.jar
 ```
+
+- 模块组成
+    - Core container
+        - spring-core
+            - 提供了框架的基本组成部分，包括控制反转（Inversion of Control，IOC）和依赖注入（Dependency Injection，DI）功能
+        - spring-beans
+            - 提供了BeanFactory
+        - spring-context   
+            - 建立在Core和Beans模块的基础之上，提供一个框架式的对象访问方式
+    - AOP
+        - spring-aop
+            -  AOP 面向切面的编程实现
+        - spring-aspects
+            - 提供了与AspectJ的集成功能，AspectJ是一个功能强大且成熟的AOP框架
+    - 数据访问与集成
+        - spring-jdbc
+        - spring-orm
+            - JPA
+        - spring-tx
+    - Web
+        - spring-websocket
+        - spring-web
+        - spring-webmvc
+        - spring-webflux
+    - Messaging
+    - Test
+- IOC
+    - 指创建对象的控制权转移给Spring框架
+    - DI
+        - 将对象之间的依赖关系交由Spring框架，注入对象的依赖
+    
+- aop
+    - 用于将那些与业务无关，但却对多个对象产生影响的公共行为和逻辑，抽取并封装为一个可重用的模块，这个模块被命名为“切面”（Aspect）
+    - 代理模式
+        - AspectJ是静态代理，也称为编译时增强；在编译阶段并将AspectJ(切面)织入到Java字节码中生成AOP代理类，运行的时候就是增强之后的AOP对象
+        - Spring AOP使用的动态代理，在特定的切点做了增强处理，并回调原对象的方法
+            - JDK动态代理
+            - CGLIB动态代理
+                - 可以在运行时动态的生成指定类的一个子类对象，并覆盖其中特定方法并添加增强代码，从而实现AOP。CGLIB是通过继承的方式做的动态代理，因此如果某个类被标记为final，那么它是无法使用CGLIB做动态代理的
+        - 相对来说AspectJ的静态代理方式具有更好的性能，但是AspectJ需要特定的编译器进行处理，而Spring AOP则无需特定的编译器处理
+        
+    - IoC让相互协作的组件保持松散的耦合，而AOP编程把遍布于应用各层的功能分离出来形成可重用的功能组件
+    - 概念
+        - 切点（Pointcut）：切点用于定义 要对哪些连接点 Join point进行拦截。
+            - 切点分为execution方式和annotation方式。execution方式可以用路径表达式指定对哪些方法拦截，比如指定拦截add*、search*。annotation方式可以指定被哪些注解修饰的代码进行拦截
+        - 通知（Advice）：指要在连接点（Join Point）上执行的动作，即增强的逻辑
+            - 通知有各种类型，包括Around、Before、After、After returning、After throwing
+            - Around
+                - 可以选择是否继续执行连接点或直接返回它们自己的返回值或抛出异常来结束执行
+        - 引入（Introduction）：添加方法或字段到被代理的对象
+            - 向现有的类添加新方法或属性
+            - 在无需修改这些现有的类的情况下，让它们具有新的行为和状态
+        - 参照切点定义找到相应的连接点
+        - 将相应的通知织入到切点指定的连接点
+        - 同一个Aspect，不同advice的执行顺序：
+          
+          （1）没有异常情况下的执行顺序：
+          
+          around before advice
+          before advice
+          target method 执行
+          around after advice
+          after advice
+          afterReturning
+          
+          （2）有异常情况下的执行顺序：
+          
+          around before advice
+          before advice
+          target method 执行
+          around after advice
+          after advice
+          afterThrowing
+          java.lang.RuntimeException: 异常发生
+        - 不同aspect，advice的执行顺序
+        入操作（Around（接入点执行前）、Before），优先级越高，越先执行；
+        一个切面的入操作执行完，才轮到下一切面，所有切面入操作执行完，才开始执行接入点；
+        出操作（Around（接入点执行后）、After、AfterReturning、AfterThrowing），优先级越低，越先执行。
+        一个切面的出操作执行完，才轮到下一切面，直到返回到调用点
+    
+- spring 容器启动
+    - ApplicationContext
+        - org.springframework.context.annotation.AnnotationConfigApplicationContext
+        - org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext
+     
+
+
+- BeanFactory  VS ApplicationContext
+    - BeanFactory 是Spring里面最底层的接口，是IoC的核心，定义了IoC的基本功能，包含了各种Bean的定义、加载、实例化，依赖注入和生命周期管理。ApplicationContext接口作为BeanFactory的子类，除了提供BeanFactory所具有的功能外，还提供了更完整的框架功能如资源文件访问、载入多个（有继承关系）上下文    
+    - BeanFactroy采用的是延迟加载形式来注入Bean的，只有在使用到某个Bean时(调用getBean())，才对该Bean进行加载实例化
+        - 直至第一次使用调用getBean方法才会发现错误
+    - ApplicationContext，它是在容器启动时，一次性创建了所有的Bean 即在容器启动时触发调用getBean()
+        - 在容器启动时，可以发现Spring中存在的配置错误，这样有利于检查所依赖属性是否注入    
+        - ApplicationContext启动后预载入所有的单实例Bean
+    - 相对于BeanFactory，ApplicationContext 唯一的不足是占用内存空间，当应用程序配置Bean较多时，程序启动较慢    
+        
+- Bean的生命周期
+    - 循环引用
+        - 循环依赖问题在Spring中主要有三种情况：
+          （1）通过构造方法进行依赖注入时产生的循环依赖问题。
+          （2）通过setter方法进行依赖注入且是在多例（原型）模式下产生的循环依赖问题。
+          （3）通过setter方法进行依赖注入且是在单例模式下产生的循环依赖问题
+        - 在Spring中，只有第（3）种方式的循环依赖问题被解决了，其他两种方式在遇到循环依赖问题时都会产生异常。这是因为
+           1 第一种构造方法注入的情况下，在new对象的时候就会堵塞住了，其实也就是”先有鸡还是先有蛋“的历史难题。
+           2 第二种setter方法（多例）的情况下，每一次getBean()时，都会产生一个新的Bean，如此反复下去就会有无穷无尽的Bean产生了，最终就会导致OOM问题的出现
+        - 三级缓存到二级缓存的过程可能会触发生成代理对象或者直接把还未完全进行属性设置和初始化的bean实例引用从三级缓存放入二级缓存   
+    	- 单例bean 三级缓存
+    	    - 工厂对象缓存 用于解决(aop)代理对象循环引用问题, 解决循环引用时 A -> B -> A ， B在属性设置时引用A的代理对象，而非真实对象；三级缓存是为了解决(aop)代理下的循环引用
+    	    - 在bean设置属性和初始化的过程中可能会被其他bean引用，此时被循环引用的过程会触发代理对象的创建，没有发生循环引用时代理对象在bean初始化完成后生成
+    	    
+- 三级缓存的根本原因
+本质上采用二级缓存也完全可以解决单纯的代理问题 bean实例化后直接创建代理放入二级缓存即可，不管有没有循环依赖，都提前创建好代理对象，并将代理对象放入缓存，出现循环依赖时，其他对象直接就可以取到代理对象并注入。
+
+采用三级缓存更多是设计上的考虑
+        不提前创建好代理对象，在出现循环依赖被其他对象注入时，才实时生成代理对象。这样在没有循环依赖的情况下，Bean就可以按着Spring设计原则的步骤来创建
+如果要使用二级缓存解决循环依赖，意味着Bean在构造完后就创建代理对象，这样违背了Spring设计原则。Spring结合AOP和Bean的生命周期，是在Bean创建完全之后通过AnnotationAwareAspectJAutoProxyCreator这个后置处理器来完成的，在这个后置处理的postProcessAfterInitialization方法中对初始化后的Bean完成AOP代理。如果出现了循环依赖，那没有办法，只有给Bean先创建代理，但是没有出现循环依赖的情况下，设计之初就是让Bean在生命周期的最后一步完成代理而不是在实例化后就立马完成代理
+
+            
+- bean的作用域            
+    - prototype：每次getBean请求创建一个新实例对象
+
+- 事务
+    - 嵌套事务
+        - mysql savepoint
+- 设计模式
+    - 适配器模式
+        - Advice 
+    - 装饰器模式
+             
