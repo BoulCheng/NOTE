@@ -96,4 +96,22 @@
 - 对数据库进行修改时，会产生redo，也会产生undo
 - undo记录中存储的是老版本数据，当一个旧的事务需要读取数据时，为了能读取到老版本的数据，需要顺着undo链找到满足其可见性的记录
 - undo log的产生会伴随着redo log的产生，因为undo log也需要持久性的保护
+
+### redo log 和 binlog的两阶段提交 
+```
+prepare：redolog写入log buffer，并fsync持久化到磁盘，在redolog事务中记录2PC的XID，在redolog事务打上prepare标识
+commit：binlog写入log buffer，并fsync持久化到磁盘，在binlog事务中记录2PC的XID，同时在redolog事务打上commit标识
+其中，prepare和commit阶段所提到的“事务”，都是指内部XA事务，即2P
+
+
+redolog中的事务如果经历了二阶段提交中的prepare阶段，则会打上prepare标识，如果经历commit阶段，则会打上commit标识（此时redolog和binlog均已落盘）。
+
+Step1. 按顺序扫描redolog，如果redolog中的事务既有prepare标识，又有commit标识，就直接提交（复制redolog disk中的数据页到磁盘数据页）
+
+Step2 .如果redolog事务只有prepare标识，没有commit标识，则说明当前事务在commit阶段crash了，binlog中当前事务是否完整未可知，此时拿着redolog中当前事务的XID（redolog和binlog中事务落盘的标识），去查看binlog中是否存在此XID
+
+​ a. 如果binlog中有当前事务的XID，则提交事务（复制redolog disk中的数据页到磁盘数据页）
+
+​ b. 如果binlog中没有当前事务的XID，则回滚事务（使用undolog来删除redolog中的对应事务
+```
     
