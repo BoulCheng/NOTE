@@ -1,5 +1,28 @@
 
 
+
+### 启动
+- 启动类@SpringBootApplication
+    - @ComponentScan
+    - @SpringBootConfiguration
+        - @Configuration
+    - @EnableAutoConfiguration
+        - @AutoConfigurationPackage
+            - AutoConfigurationPackage注解的作用是将 添加该注解的类所在的package 作为 自动配置package 进行管理
+                - 如MybatisAutoConfiguration自动配置会使用到该自动配置package，去扫描@Mapper注解
+        - @Import({AutoConfigurationImportSelector.class})
+            - spring-starter 自配配置 
+- 创建容器 ApplicationContext
+- 容器预处理 
+    - 注册启动类的BeanDefinition到容器
+        - 在容器刷新步骤 ConfigurationClassPostProcessor 会处理 @Configuration 注解的类；且如果该类有@ComponentScan注解但配置的包为空，则使用@Configuration注解的类的包作为扫描包
+            - 有了注册启动类的BeanDefinition到容器，因此启动的包会作为扫描包被扫描处理各种注解
+        
+- 刷新容器
+- ApplicationContext
+    - ApplicationContext
+    - ApplicationContext
+
 #### springboot jar 如何加载到应用程序依赖jar包中的class
 - classpath
     - classpath是JVM用到的一个环境变量，它用来指示JVM如何搜索class 去哪搜索对应的class文件
