@@ -88,6 +88,14 @@
 - 表锁
     - 哪些情况会产生
         -  LOCK TABLES ... WRITE takes an exclusive lock (an X lock) on the specified table
+```
+	    X	        IX	        S	        IS
+X	Conflict	Conflict	Conflict	Conflict
+IX	Conflict	Compatible	Conflict	Compatible
+S	Conflict	Conflict	Compatible	Compatible
+IS	Conflict	Compatible	Compatible	Compatible
+
+```
 - 行锁
     - InnoDB performs row-level locking in such a way that when it searches or scans a table index, it sets shared or exclusive locks on the index records it encounters. Thus, the row-level locks are actually index-record locks    
 - 锁算法
@@ -135,7 +143,66 @@
       - 这个级别很简单，读加共享锁，写加排他锁，读写互斥。使用的悲观锁的理论，实现简单，数据更加安全，但是并发能力非常差。如果你的业务并发的特别少或者没有并发，同时又要求数据及时可靠的话，可以使用这种模式。
       - select在Serializable这个级别，还是会加锁的
       - SELECT ... FROM is a consistent read, reading a snapshot of the database and setting no locks unless the transaction isolation level is set to SERIALIZABLE
- 
+
+#### 加锁 
+- update
+    - 二级索引的叶子节点中保存了主键索引的位置，在给二级索引加锁的时候，主键索引也会一并加锁；有可能其他事务会根据主键对 students 表进行更新，如果主键索引没有加锁，那么显然会存在并发问题；真正的行数据都被组织到主键索引的叶子节点
+    - 在 InnoDb 存储引擎里，每个数据页中都会有两个虚拟的行记录，用来限定记录的边界，分别是：Infimum Record 和 Supremum Record，Infimum 是比该页中任何记录都要小的值，而 Supremum 比该页中最大的记录值还要大，这两条记录在创建页的时候就有了，并且不会删除
+    - 在没有索引的时候，只能走聚簇索引，对表中的记录进行全表扫描。在 RC 隔离级别下会给所有记录加行锁，在 RR 隔离级别下，不仅会给所有记录加行锁，所有聚簇索引和聚簇索引之间还会加上 GAP 锁
+        - 这是由于 MySQL 的实现决定的。如果一个条件无法通过索引快速过滤，那么存储引擎层面就会将所有记录加锁后返回，然后由 MySQL Server 层进行过滤，因此也就把所有的记录都锁上了
+            - 不过在实际的实现中，MySQL 有一些改进，如果是 RC 隔离级别，在 MySQL Server 过滤条件发现不满足后，会调用 unlock_row 方法，把不满足条件的记录锁释放掉（违背了 2PL 的约束）。这样做可以保证最后只会持有满足条件记录上的锁，但是每条记录的加锁操作还是不能省略的
+            - 如果是 RR 隔离级别，一般情况下 MySQL 是不能这样优化的，除非设置了 innodb_locks_unsafe_for_binlog 参数，这时也会提前释放锁，并且不加 GAP 锁，这就是所谓的 semi-consistent read
+                - 启用innodb_locks_unsafe_for_binlog在没有索引的时候走聚簇索引时，还有以下作用：
+                    - 对于update或者delete语句，InnoDB只会持有匹配条件的记录的锁。在MySQL Server过滤where条件，发现不满足后，会把不满足条件的记录释放锁。这可以大幅降低死锁发生的概率。
+                    - 简单来说，semi-consistent read是read committed与consistent read两者的结合。一个update语句，如果读到一行已经加锁的记录，此时InnoDB返回记录最近提交的版本，由MySQL上层判断此版本是否满足update的where条件。若满足(需要更新)，则MySQL会重新发起一次读操作，此时会读取行的最新版本(并加锁)。
+        - 半一致读发生条件
+        RC隔离级别
+        RR隔离级别，且innodb_locks_unsafe_for_binlog=true
+            - innodb_locks_unsafe_for_binlog
+                innodb_locks_unsafe_for_binlog默认为off。
+                如果设置为1，会禁用gap锁，但对于外键冲突检测（foreign-key constraint checking）或者重复键检测（duplicate-key checking）还是会用到gap锁。
+                启用innodb_locks_unsafe_for_binlog产生的影响等同于将隔离级别设置为RC，不同之处是：
+                1）innodb_locks_unsafe_for_binlog是全局参数，影响所有session；但隔离级别可以是全局也可以是会话级别。
+                2）innodb_locks_unsafe_for_binlog只能在数据库启动的时候设置；但隔离级别可以随时更改。
+                基于上述原因，RC相比于innodb_locks_unsafe_for_binlog会更好更灵活
+    - 范围查询
+        - 所以对于范围查询，如果 WHERE 条件是 id <= N，那么 N 后一条记录也会被加上 Next-key 锁；如果条件是 id < N，那么 N 这条记录会被加上 Next-key 锁。另外，如果 WHERE 条件是 id >= N，只会给 N 加上记录锁，以及给比 N 大的记录加锁，不会给 N 前一条记录加锁；如果条件是 id > N，也不会锁前一条记录，连 N 这条记录都不会锁
+            - 查找过程中访问到的对象才会加锁，范围查找时，不管是不是唯一索引都会扫描到 第一个不满足条件的值。 这点才是关键 (待定 如何确定扫描到 如何定义scanned)
+        - 当数据表中数据非常少时， 语句会走全表扫描，这样表中所有记录都会被锁住 (不确定)
+        - 在范围查询时，加锁是一条记录一条记录挨个加锁的，所以虽然只有一条 SQL 语句，如果两条 SQL 语句的加锁顺序不一样，也会导致死锁
+- 复杂查询
+    - Index Filter，就是复合索引中除 Index Key 之外的其他可用于过滤的条件
+        - 在 MySQL 5.6 之后，Index Filter 与 Table Filter 分离，Index Filter 下降到 InnoDB 的索引层面进行过滤，减少了回表与返回 MySQL Server 层的记录交互开销，提高了SQL的执行效率，这就是传说中的 ICP（Index Condition Pushdown），使用 Index Filter 过滤不满足条件的记录，无需加锁
+- delete
+    - DELETE 和 UPDATE 的加锁也几乎是一样的
+    - 标记为删除的记录，对于这种类型记录，它的加锁和其他记录的加锁机制不一样
+    - 执行 DELETE 语句其实并没有直接删除记录，而是在记录上打上一个删除标记，然后通过后台的一个叫做 purge 的线程来清理
+- insert
+    - 隐式锁的特点是只有在可能发生冲突时才加锁，减少了锁的数量。另外，隐式锁是针对被修改的 B+Tree 记录，因此都是 Record 类型的锁，不可能是 Gap 或 Next-Key 类型
+    - 为了防止幻读，如果记录之间加有 GAP 锁，此时不能 INSERT；
+        - 加插入意向锁
+    - 如果 INSERT 的记录和已有记录造成唯一键冲突，此时不能 INSERT
+        - 加 S 锁进行当前读
+    - INSERT 加锁流程
+        - 首先对插入的间隙加插入意向锁（Insert Intension Locks）(INSERT 语句要插入记录所在区间加插入意向锁)
+            - 如果该间隙已被加上了 GAP 锁或 Next-Key 锁，则加锁失败进入等待；
+            - 如果没有，则加锁成功，表示可以插入；
+        - 然后判断插入记录是否有唯一键，如果有，则进行唯一性约束检查
+            - 如果不存在相同键值，则完成插入
+            - 如果存在相同键值，则判断该键值是否加锁
+                - 如果没有锁， 判断该记录是否被标记为删除
+                    - 如果标记为删除，说明事务已经提交，还没来得及 purge，这时加 S 锁等待；
+                    - 如果没有标记删除，则报 1062 duplicate key 错误；
+                - 如果有锁，说明该记录正在处理（新增、删除或更新），且事务还未提交，加 S 锁等待；
+        - 插入记录并对记录加 X 记录锁            
+#### 死锁
+- 死锁日志
+    - 以通过 show engine innodb status 命令来获取死锁信息，但是它有个限制，只能拿到最近一次的死锁日志
+    - InnoDb 的监控
+    - 系统参数 innodb_print_all_deadlocks 专门用于记录死锁日志，当发生死锁时，死锁日志会记录到 MySQL 的错误日志文件中
+    - 对死锁的诊断不能仅仅靠死锁日志，还应该结合应用程序的代码来进行分析，如果实在接触不到应用代码，还可以通过数据库的 binlog 来分析（只要你的死锁不是 100% 必现，那么 binlog 日志里肯定能找到一份完整的事务一和事务二的 SQL 语句）。通过应用代码或 binlog 理出每个事务的 SQL 执行顺序，这样分析死锁时就会容易很多
+- 死锁的根本原因是有两个或多个事务之间加锁顺序的不一致导致的
+
 - 死锁
     - 多个事务相互等待锁资源(等待其他事务释放锁以获得锁)
     - 采用等待图(wait-for graph)的方式来进行死锁检测
@@ -143,6 +210,9 @@
         - 图中存在回路则发生死锁
         - 死锁检测采用深度优先算法(td)  
     - 如何避免死锁
+        - 对索引加锁顺序的不一致很可能会导致死锁，所以如果可以，尽量以相同的顺序来访问索引记录和表。以批量方式处理数据的时候，如果事先对数据排序，保证每个线程按固定的顺序来处理记录，也可以大大降低出现死锁的可能
+        - 为表添加合理的索引，如果不走索引将会为表的每一行记录加锁，死锁的概率就会大大增大；
+        - 避免大事务，尽量将大事务拆成多个小事务来处理；因为大事务占用资源多，耗时长，与其他事务冲突的概率也会变高；
     - 如何解决死锁        
 - 锁升级
     - [https://segmentfault.com/a/1190000037510033]
@@ -420,6 +490,37 @@ BEGIN; -- t2
 update X set c=0 where b=6  -- 不会锁住  不需要插入意向锁
 commit;
 ```
+
+### explain
+explain
+type:
+const: 针对主键或唯一索引的等值查询扫描, 最多只返回一行数据.
+eq_ref: It is used when all parts of an index are used by the join and the index is a PRIMARY KEY or UNIQUE NOT NULL index
+ref: 此类型通常出现在多表的 join 查询, 针对于非唯一或非主键索引, 或者是使用了 最左前缀 规则索引的查询. 
+range: 表示使用索引范围查询, 通过索引字段范围获取表中部分数据记录. 这个类型通常出现在 =, <>, >, >=, <, <=, IS NULL, <=>, BETWEEN, IN() 操作中.
+index: 表示全索引扫描(full index scan), 和 ALL 类型类似, 只不过 ALL 类型是全表扫描, 而 index 类型则仅仅扫描所有的索引, 而不扫描数据.
+ALL: 表示全表扫描, 这个类型的查询是性能最差的查询之一.
+ALL < index < range ~ index_merge < ref < eq_ref < const < system
+key: 真正使用到的索引
+key_len:优化器使用了索引的字节数,这个字段可以评估组合索引是否完全被使用, 或只有最左部分字段被使用到.
+key_len 的计算规则如下:
+字符串
+char(n): n 字节长度
+varchar(n): 如果是 utf8 编码, 则是 3 n + 2字节; 如果是 utf8mb4 编码, 则是 4 n + 2 字节.
+数值类型:
+TINYINT: 1字节
+SMALLINT: 2字节
+MEDIUMINT: 3字节
+INT: 4字节
+BIGINT: 8字节
+时间类型
+DATE: 3字节
+TIMESTAMP: 4字节
+DATETIME: 8字节
+字段属性: NULL 属性 占用一个字节. 如果一个字段是 NOT NULL 的, 则没有此属性.
+
+
+
 
 - 如何通过 show engine innodb status; 查看间隙锁的范围
 
