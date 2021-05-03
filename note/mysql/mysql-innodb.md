@@ -85,17 +85,51 @@
         - 如果另一个任务试图在该表级别上应用共享或排它锁，则受到由第一个任务控制的表级别意向锁的阻塞。第二个任务在锁定该表前不必检查各个页或行锁，而只需检查表上的意向锁 
             - 如事务在试图对表加共享锁的时候，必须保证当前没有其他事务持有该表的排他锁且当前没有其他事务持有该表中任意一行的排他锁，为了检测是否满足后者，事务必须在确保该表不存在任何排他锁的前提下，去检测表中的每一行是否存在排他锁。但是有了意向锁可以直接检查意向锁
         - Intention locks do not block anything except full table requests (for example, LOCK TABLES ... WRITE). The main purpose of intention locks is to show that someone is locking a row, or going to lock a row in the table
+- Intention Locks
+    - The main purpose of intention locks is to show that someone is locking a row, or going to lock a row in the table.
+        - Intention locks do not block anything except full table requests (for example, LOCK TABLES ... WRITE). 
+    - The intention locking protocol is as follows(获得行锁之前必须获先得意向锁):
+       - Before a transaction can acquire a shared lock on a row in a table, it must first acquire an IS lock or stronger on the table.
+       - Before a transaction can acquire an exclusive lock on a row in a table, it must first acquire an IX lock on the table.
+    - Intention locks are table-level locks that indicate which type of lock (shared or exclusive) a transaction requires later for a row in a table. There are two types of intention locks:
+        - An intention shared lock (IS) indicates that a transaction intends to set a shared lock on individual rows in a table.
+        - An intention exclusive lock (IX) indicates that a transaction intends to set an exclusive lock on individual rows in a table.
+        - For example, SELECT ... LOCK IN SHARE MODE sets an IS lock, and SELECT ... FOR UPDATE sets an IX lock.
+    - Transaction data for an intention lock appears similar to the following in SHOW ENGINE INNODB STATUS and InnoDB monitor output:
+        - TABLE LOCK table `test`.`t` trx id 10080 lock mode IX
+
 - 表锁
     - 哪些情况会产生
         -  LOCK TABLES ... WRITE takes an exclusive lock (an X lock) on the specified table
-```
-	    X	        IX	        S	        IS
-X	Conflict	Conflict	Conflict	Conflict
-IX	Conflict	Compatible	Conflict	Compatible
-S	Conflict	Conflict	Compatible	Compatible
-IS	Conflict	Compatible	Compatible	Compatible
-
-```
+        - Table-level lock type compatibility is summarized in the following matrix.
+            ```
+                    X	        IX	        S	        IS
+            X	Conflict	Conflict	Conflict	Conflict
+            IX	Conflict	Compatible	Conflict	Compatible
+            S	Conflict	Conflict	Compatible	Compatible
+            IS	Conflict	Compatible	Compatible	Compatible
+            
+            ```
+    - 操作行会先获取表级的意向锁 
+        - 为表增加索引是会对表进行加锁处理的，可能会导致表被锁后，业务无法进行读写操作行数据而产生事故
+        
+- LOCK TABLES 和 UNLOCK TABLES
+Mysql也支持lock tables和unlock tables，这都是在服务器层（MySQL Server层）实现的，和存储引擎无关，它们有自己的用途，并不能替代事务处理。 （除了禁用了autocommint后可以使用，其他情况不建议使用）：
+LOCK TABLES 可以锁定用于当前线程的表。如果表被其他线程锁定，则当前线程会等待，直到可以获取所有锁定为止。
+UNLOCK TABLES 可以释放当前线程获得的任何锁定。当前线程执行另一个 LOCK TABLES 时，
+或当与服务器的连接被关闭时，所有由当前线程锁定的表被隐含地解锁
+LOCK TABLES语法：
+在用 LOCK TABLES 对 InnoDB 表加锁时要注意，要将 AUTOCOMMIT 设为 0，否则MySQL 不会给表加锁；
+事务结束前，不要用 UNLOCK TABLES 释放表锁，因为 UNLOCK TABLES会隐含地提交事务；
+COMMIT 或 ROLLBACK 并不能释放用 LOCK TABLES 加的表级锁，必须用UNLOCK TABLES 释放表锁。
+正确的方式见如下语句：
+例如，如果需要写表 t1 并从表 t 读，可以按如下做：
+SET AUTOCOMMIT=0; 
+LOCK TABLES t1 WRITE, t2 READ, ...; 
+[do something with tables t1 and t2 here]; 
+COMMIT; 
+UNLOCK TABLES;
+        
 - 行锁
     - InnoDB performs row-level locking in such a way that when it searches or scans a table index, it sets shared or exclusive locks on the index records it encounters. Thus, the row-level locks are actually index-record locks    
 - 锁算法
@@ -201,6 +235,71 @@ IS	Conflict	Compatible	Compatible	Compatible
     - InnoDb 的监控
     - 系统参数 innodb_print_all_deadlocks 专门用于记录死锁日志，当发生死锁时，死锁日志会记录到 MySQL 的错误日志文件中
     - 对死锁的诊断不能仅仅靠死锁日志，还应该结合应用程序的代码来进行分析，如果实在接触不到应用代码，还可以通过数据库的 binlog 来分析（只要你的死锁不是 100% 必现，那么 binlog 日志里肯定能找到一份完整的事务一和事务二的 SQL 语句）。通过应用代码或 binlog 理出每个事务的 SQL 执行顺序，这样分析死锁时就会容易很多
+```
+mysql>
+mysql>
+mysql> show variables like 'log_bin';
++---------------+-------+
+| Variable_name | Value |
++---------------+-------+
+| log_bin       | ON    |
++---------------+-------+
+1 row in set (0.00 sec)
+
+mysql>
+mysql> show master logs;
++---------------+-----------+-----------+
+| Log_name      | File_size | Encrypted |
++---------------+-----------+-----------+
+| binlog.000081 |      1350 | No        |
+| binlog.000082 |       178 | No        |
+| binlog.000083 |       178 | No        |
+| binlog.000084 |      3801 | No        |
++---------------+-----------+-----------+
+4 rows in set (0.00 sec)
+
+mysql>
+mysql> show variables like 'log_%'
+    -> ;
++----------------------------------------+----------------------------------------+
+| Variable_name                          | Value                                  |
++----------------------------------------+----------------------------------------+
+| log_bin                                | ON                                     |
+| log_bin_basename                       | /usr/local/mysql/data/binlog           |
+| log_bin_index                          | /usr/local/mysql/data/binlog.index     |
+| log_bin_trust_function_creators        | OFF                                    |
+| log_bin_use_v1_row_events              | OFF                                    |
+| log_error                              | /usr/local/mysql/data/mysqld.local.err |
+| log_error_services                     | log_filter_internal; log_sink_internal |
+| log_error_suppression_list             |                                        |
+| log_error_verbosity                    | 2                                      |
+| log_output                             | FILE                                   |
+| log_queries_not_using_indexes          | OFF                                    |
+| log_slave_updates                      | ON                                     |
+| log_slow_admin_statements              | OFF                                    |
+| log_slow_extra                         | OFF                                    |
+| log_slow_slave_statements              | OFF                                    |
+| log_statements_unsafe_for_binlog       | ON                                     |
+| log_throttle_queries_not_using_indexes | 0                                      |
+| log_timestamps                         | UTC                                    |
++----------------------------------------+----------------------------------------+
+18 rows in set (0.01 sec)
+mysql> show variables like 'binlog_format';
++---------------+-------+
+| Variable_name | Value |
++---------------+-------+
+| binlog_format | ROW   |
++---------------+-------+
+1 row in set (0.01 sec)
+
+mysql>
+mysql>
+```
+
+```
+appledeiMac:~ apple$ sudo mysqlbinlog -vv /usr/local/mysql-8.0.17-macos10.14-x86_64/data/binlog.000084
+```
+
 - 死锁的根本原因是有两个或多个事务之间加锁顺序的不一致导致的
 
 - 死锁
