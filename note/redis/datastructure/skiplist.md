@@ -38,4 +38,8 @@
             
             3) They are simpler to implement, debug, and so forth. For instance thanks to the skip list simplicity I received a patch (already in Redis master) with augmented skip lists implementing ZRANK in O(log(N)). It required little changes to the code.
             
-            ```            
+
+            - 内存占用更少 默认配置情况每个节点所包含的平均指针数目为1.33
+            - 跳表查询的期望时间复杂度为O(logn) 且插入、删除操作更加简单
+            - 实现简单
+            - 体会下ConcurrentSkipListMap对ConcurrentHashMap的增强

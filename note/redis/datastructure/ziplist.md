@@ -1,4 +1,9 @@
 #### ziplist
+- 占内存少
+    - 少了指针占用内存 变长编码 
+- 少了内存碎片
+
+
 - The ziplist is a specially encoded dually linked list that is designed to be very memory efficient. It stores both strings and integer values, where integers are encoded as actual integers instead of a series of characters. It allows push and pop operations on either side of the list in O(1) time.
 - ziplist是一个经过特殊编码的双向链表，它的设计目标就是为了提高存储效率。ziplist可以用于存储字符串或整数，其中整数是按真正的二进制表示进行编码的，而不是编码成字符序列。它能以O(1)的时间复杂度在表的两端提供push和pop操作
 
@@ -14,7 +19,7 @@
         - <prevrawlen><len><data>
           
 
-
+#### hash
 - hash与ziplist
     - hash随着数据的增大，其底层数据结构的实现是会发生变化的，当然存储效率也就不同。在field比较少，各个value值也比较小的时候，hash采用ziplist来实现；而随着field增多和value值增大，hash可能会变成dict来实现。当hash底层变成dict来实现的时候，它的存储效率就没法跟那些序列化方式相比了
     - 当我们为某个key第一次执行 hset key field value 命令的时候，Redis会创建一个hash结构，这个新创建的hash底层就是一个ziplist
