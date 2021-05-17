@@ -1,5 +1,8 @@
 
+###
+- 支持consumer端tag过滤，减少不必要的网络传输
 
+### 消息的 exactly one
 
 #### concept
 
@@ -8,21 +11,29 @@
     - Message Queue 用于存储消息的物理地址，每个Topic中的消息地址存储于多个 Message Queue 中 ?
 - Producer
     - 同步发送、异步发送、顺序发送、单向发送
-    
+    - 拥有相同 Producer Group 的 Producer 组成一个集群
 - Consumer
     - 拉取式消费、推动式消费
+    - 拥有相同 Consumer Group 的Consumer 组成一个集群
 - Topic
     - 表示一类消息的集合, 每条消息只能属于一个主题，是RocketMQ进行消息订阅的基本单位
 - Broker Server
     - 消息中转角色，负责存储消息、转发消息
     - 也存储消息相关的元数据，包括消费者组、消费进度偏移和主题和队列消息等
+    - 通过提供轻量级的 Topic 和 Queue 机制来处理消息存储,同时支持推（push）和拉（pull）模式以及主从结构的容错机制
+    - Broker 与NameServer 集群中的所有节点建立长连接，定时注册 Topic 信息到所有 NameServer 中 ？
+    - 主从数据同步方式
 - Name Server
     - 生产者或消费者能够通过名字服务查找 各主题相应的Broker IP列表
-    - 多个Namesrv实例组成集群，但相互独立，没有信息交换。
+    - 多个Namesrv实例组成集群，但相互独立，没有信息交换，提供等效的读写服务
+    - 提供轻量级的服务发现和路由
     
 - Producer Group
     - 如果发送的是事务消息且原始生产者在发送之后崩溃，则Broker服务器会联系同一生产者组的其他生产者实例以提交或回溯消费
+    - 与 NameServer 集群中的其中一个节点（随机选择）建立长连接，定期从 NameServer 获取 Topic 路由信息，并向提供 Topic 服务的 Broker Master 建立长连接，且定时向 Broker 发送心跳
+        - Producer 只能将消息发送到 Broker master，但是 Consumer 则不一样，它同时和提供 Topic 服务的 Master 和 Slave 建立长连接，既可以从 Broker Master 订阅消息，也可以从 Broker Slave 订阅消息
 - Consumer Group
+    - 组就是集群？ 
     - 消费者组的消费者实例必须订阅完全相同的Topic
     - 费者组使得在消息消费方面，实现负载均衡和容错的目标变得非常容易
     
@@ -46,7 +57,10 @@
     - 为消息设置的标志，用于同一主题下区分不同类型的消息
     - 消费者可以根据Tag实现对不同子主题的不同消费逻辑，实现更好的扩展性。
     
-    
+Producer Group
+Producers of the same role are grouped together. A different producer instance of the same producer group may be contacted by a broker to commit or roll back a transaction in case the original producer crashed after the transaction.
+
+Warning: Considering the provided producer is sufficiently powerful at sending messages, only one instance is allowed per producer group to avoid unnecessary initialization of producer instances    
 #### features
 - 消息的订阅是指某个消费者关注了某个topic中带有某些tag的消息，进而从该topic消费数据。
 - 消息顺序
@@ -96,7 +110,7 @@
         - 消费者流控的结果是降低拉取频率。
 -  死信队列
     - 当一条消息初次消费失败，消息队列会自动进行消息重试；达到最大重试次数后，若消费依然失败，则表明消费者在正常情况下无法正确地消费该消息，此时，消息队列 不会立刻将消息丢弃，而是将其发送到该消费者对应的特殊队列中   
-    - 可以通过使用console控制台对死信队列中的消息进行重发来使得消费者实例再次进行消费
+    - 可以通过使用console控制台对死信队列中的消息进行重发来使得消费者实例再次进行消费，将消息重新投递到原topic进行重新消费
     
 #### architecture
 - Producer 
@@ -135,6 +149,8 @@
 #### 消息存储
 - 消息存储整体架构
     - CommitLog
+        - Producer发送消息至Broker端，然后Broker端使用同步或者异步的方式对消息刷盘持久化，保存至CommitLog中
+        - 多个Topic的消息实体内容都存储于一个CommitLog中， Broker单个实例下所有topic下的所有的队列共用一份日志数据文件（即为CommitLog）来存储，一个commitlog文件写满继续写下一个
         - 日志数据文件 消息主体以及元数据的存储文件
         - 文件名长度为20位，左边补零，剩余为起始偏移量
         - 消息主要是顺序写入日志文件，当文件满了，写入下一个文件
@@ -143,6 +159,7 @@
         - 逻辑消费队列，消息消费队列，引入的目的主要是提高消息消费的性能
         - ConsumeQueue（逻辑消费队列）作为消费消息的索引，保存了指定Topic下的队列消息在CommitLog中的起始物理偏移量offset，消息大小size和消息Tag的HashCode值
         - 同样consumequeue文件采取定长设计，每一个条目共20个字节，分别为8字节的commitlog物理偏移量、4字节的消息长度、8字节tag hashcode，单个文件由30W个条目组成，可以像数组一样随机访问每一个条目，每个ConsumeQueue文件大小约5.72M
+        - 可以像数组一样随机访问每一个条目 ? 
         - 由于RocketMQ是基于主题topic的订阅模式，Consumer即可根据ConsumeQueue来查找待消费的消息
     - IndexFile
         - （索引文件）提供了一种可以通过key或时间区间来查询消息的方法
@@ -184,7 +201,7 @@
 
 - 消息过滤- tag
     - 在Consumer端订阅消息时再做消息过滤的，RocketMQ这么做是在于其Producer端写入消息和Consumer端订阅消息采用分离存储的机制来实现的，Consumer端订阅消息是需要通过ConsumeQueue这个消息消费的逻辑队列拿到一个索引，然后再从CommitLog里面读取真正的消息实体内容
-    
+    - 6 10
     - Tag过滤方式
         - Consumer端在订阅消息时除了指定Topic还可以指定TAG
         - ConsumeQueue的存储结构其中有8个字节存储的Message Tag的哈希值，基于Tag的消息过滤正式基于这个字段值的。
@@ -246,3 +263,132 @@
         - 如果消息的properties中设置了UNIQ_KEY这个属性，就用 topic + “#” + UNIQ_KEY的value作为 key 来做写入操作。如果消息设置了KEYS属性（多个KEY以空格分隔），也会用 topic + “#” + KEY 来做索引
         - IndexFile索引文件存放的真正的 key 是有 topic前缀的
         - 读取消息的过程就是用topic和key找到IndexFile索引文件中的一条记录，根据其中的commitLog offset从CommitLog文件中读取消息的实体内容
+
+- core        
+    - 刷盘策略：同步刷盘和异步刷盘（指的是节点自身数据是同步还是异步存储）
+    - 同步方式：同步双写和异步复制（指的一组 master 和 slave 之间数据的同步）
+    - 注意：要保证数据可靠，需采用同步刷盘和同步双写的方式，但性能会较其他方式低
+    -  消息中间件和RPC最大区别：Broker Cluster存储
+    - deploy
+        - 启动mqnamesrv 、mqbroker
+        - producer 指定group、namesrvAddr；发送Message Message指定了 topic, tag, keys; 刷盘持久化保存到CommitLog($HOME/store/commitlog/00000000000000000000)
+            - 后台服务线程异步构建 ConsumeQueue（逻辑消费队列）和 IndexFile（索引文件）数据
+            - ConsumeQueue 路径 $HOME/store/consumequeue/{topic}/{queueId}/{fileName}  /Users/apple/store/consumequeue/TopicTest/2/00000000000000000000
+            - IndexFile $HOME/store/index/{fileName}  /Users/apple/store/index/20210303171342999
+        - consumer 指定group、namesrvAddr、topic、tag
+        - mqadmin
+
+- 消息读写[https://www.imooc.com/article/301624#comment]
+    - RocketMQ采用的是混合型的存储结构，即为Broker单个实例下所有的队列共用一个日志数据文件（即为CommitLog）来存储。而Kafka采用的是独立型的存储结构，每个队列一个文件。这里小编认为，RocketMQ采用混合型存储结构的缺点在于，会存在较多的随机读操作，因此读的效率偏低。同时消费消息需要依赖ConsumeQueue，构建该逻辑消费队列需要一定开销
+    - RocketMQ主要通过MappedByteBuffer对文件进行读写操作，采用MappedByteBuffer这种内存映射的方式有几个限制，其中之一是一次只能映射1.5~2G 的文件至用户态的虚拟内存，这也是为何RocketMQ默认设置单个CommitLog日志数据文件为1G的原因了
+    - 封装的文件内存映射层：RocketMQ主要采用JDK NIO中的MappedByteBuffer和FileChannel两种方式完成数据文件的读写。其中，采用MappedByteBuffer这种内存映射磁盘文件的方式完成对大文件的读写，在RocketMQ中将该类封装成MappedFile类。这里限制的问题在上面已经讲过；对于每类大文件（IndexFile/ConsumerQueue/CommitLog），在存储时分隔成多个固定大小的文件（单个IndexFile文件大小约为400M、单个ConsumerQueue文件大小约5.72M、单个CommitLog文件大小为1G），其中每个分隔文件的文件名为起始偏移量，从而实现了整个大文件的串联。这里，每一种类的单个文件均由MappedFile类提供读写操作服务（其中，MappedFile类提供了顺序写/随机读、内存数据刷盘、内存清理等和文件相关的服务）
+    - 发送消息时，生产者端的消息确实是顺序写入CommitLog；订阅消息时，消费者端也是顺序读取ConsumeQueue，然而根据其中的起始物理位置偏移量offset读取消息真实内容却是随机读取CommitLog。 在RocketMQ集群整体的吞吐量、并发量非常高的情况下，随机读取文件带来的性能开销影响还是比较大的，那么这里如何去优化和避免这个问题呢
+        - 通过mmap技术减少数据拷贝次数，然后利用pagecache技术实现尽可能优先读写内存，而不是物理磁盘
+        - mmap
+        - 页缓存
+            - 操作系统将一部分的内存用作PageCache
+            - 若不在cache，操作系统从磁盘中读取对应的数据页，并且系统还会将该数据页之后的连续几页（一般三页）也一并读入到cache中，再将应用需要的数据返回给应用。此情况操作系统认为是跳跃读取，属于同步预读。
+            - 若命中cache，相当于上次缓存的内容有效，操作系统认为顺序读盘，则继续扩大缓存的数据范围，将之前缓存的数据页往后的N页数据再读取到cache中，属于异步预读
+            - 缓存清理机制
+                - 内存回收速度比应用写缓存的速度慢，会导致写缓存的线程一直等待，体现到RocketMQ上就是写消息RT很高，这就是 “毛刺问题”。这时就需要结合GC参数和系统内核参数进行调整
+        - 预先分配MappedFile
+            - RocketMQ中预分配MappedFile的设计非常巧妙，下次获取时候直接返回就可以不用等待MappedFile创建分配所产生的时间延迟
+        - 文件预热
+            - 在做Mmap内存映射的同时进行madvise系统调用，目的是使OS做一次内存映射后对应的文件数据尽可能多的预加载至内存中，从而达到内存预热的效果
+        
+        
+- 事务消息
+    - 本地事务 + mq
+    - 本地事务成功，mq回查15次仍失败则mq失败，此处本地事务和mq不一致
+    - mq成功则本地事务成功，因为只有本地事务成功mq才会在第二阶段收到commit
+    - mq的两阶段设计
+        - 1
+    - 本地事务成功 mq失败的最终处理方式 就是让它不一致 ？ 
+- 各种处理流程
+    - producer发送消息
+        - DefaultMQProducer 、DefaultMQProducerImpl、MQClientInstance、MQClientAPIImpl、NettyRemotingClient、MessageQueue
+        - MQFaultStrategy、NettyRemotingAbstract、ResponseFuture、SendCallback、TopicValidator、NettySystemConfig
+    - broker存储消息的流程
+        - NettyRemotingAbstract\SendMessageProcessor\DefaultMessageStore
+        MessageStoreConfig MappedFile MappedFileQueue CommitLog
+        
+        - NettyRemotingAbstract SendMessageProcessor DefaultMessageStore CommitLog MappedFile
+        
+    - consumer broker 消费消息的流程
+    
+- 源码
+    - Reactor多线程模型
+        - NettyRemotingServer
+        - NettyRemotingAbstract
+    - 
+    
+- 
+    
+    - RocketMQ 高性能揭秘 - 知乎
+    - RocketMQ消息消费源码分析(一消费者的启动、消息拉取)_大灰狼的专栏-CSDN博客_rocketmq消费者启动
+    - 阿里RocketMQ如何解决消息的顺序&重复两大硬伤？ - 大数据 - dbaplus社群：围绕Data、Blockchain、AiOps的企业级专业社群。技术大咖、原创干货，每天精品原创文章推送，每周线上技术分享，每月线下技术沙龙。
+    - https://mp.weixin.qq.com/s/Q0wF9775aWtrtjympQNLGg
+    - (5条消息) RocketMQ入门到入土（五）消息持久化存储源码解析_Java知音-CSDN博客
+    - 论最强IO：MappedByteBuffer VS FileChannel_布道-CSDN博客
+    
+- 如何读写分离
+    - 读盘基于 MMAP，写盘默认使用 MMAP，可经过修改配置，配置成 FileChannel，缘由是做者想避免 PageCache 的锁竞争，经过两层架构实现读写分离
+- 消息消费
+    - 消费方式
+        - push
+            - PullConsumer，由用户主动调用pull方法来获取消息，没有则返回
+            - PushConsumer，在启动后，Consumer客户端会主动循环发送Pull请求到broker，如果没有消息，broker会把请求放入等待队列，新消息到达后返回response。
+        - pull
+          - push模式可以达到准实时的消息推送
+          - 在高并发的场景下，消费端的性能可能会达到瓶颈的情况下，消费端可以采用pull模式，消费端根据自身消费情况去拉取，虽然push模式在消息拉取的过程中也会有流控（当前ProcessQueue队列有1000条消息还没有消费或者当前ProcessQueue中最大偏移量和最小偏移量超过2000将会触发流控，流控的策略就是延迟50ms再拉取消息），但是这个值在实际情况下，可能每台机器的性能都不太一样，会不好控制
+        - 所以本质上，两种方式都是通过客户端Pull来实现的
+    - 消费模式
+        - broadcast和Cluster
+        - 每条消息只会发送给group内的一个consumer，但是集群模式的支持消费失败重发，从而保证消息一定被消费
+        
+- Broker 端的 PullMessage 长连接实现
+  消息队列中的消息是由业务触发而产生的，如果使用周期性的轮询，不能保证每次都取到消息，且轮询的频率过快或者过慢都会对消息的延时有严重的影响。因此 RockMQ 在 Broker 端使用长连接的方式处理 PullMessage 请求。具体实现流程如下：
+  
+  PullRequest 请求中有个参数 brokerSuspendMaxTimeMillis，默认值为 15s，控制请求 hold 的时长。
+  PullMessageProcessor 接收到 Request 后，解析参数，校验 Topic 的 Meta 信息和消费者的订阅关系。对于符合要求的请求，从存储中拉取消息。
+  如果拉取消息的结果为 PULL_NOT_FOUND，表示当前 MessageQueue 没有最新消息。
+  此时会封装一个 PullRequest 对象，并投递给 PullRequestHoldService 内部线程的 pullRequestTable 中。
+  PullRequestHoldService 线程会周期性轮询 pullRequestTable，如果有新的消息或者 hold 时间超时 polling time，就会封装 Response 请求发给客户端。
+  另外 DefaultMessageStore 中定义了 messageArrivingListener，当产生新的 ConsumeQueue 记录时候，会触发 messageArrivingListener 回调，立即给客户端返回最新的消息。
+  长连接机制使得 RocketMQ 的网络利用率非常高效，并且最大限度地降低了消息拉取时的等待开销。实现了毫秒级的消息投递。
+  
+- 无序消息的重试只针对集群消费方式生效；广播方式不提供失败重试特性，即消费失败后，失败消息不再重试，继续消费新的消息
+
+
+- Broker端通过对比Half消息和Op消息进行事务消息的回查 如何对比
+
+
+
+- 消费模型
+常见消费模型有以下几种：
+push：producer发送消息后，broker马上把消息投递给consumer。这种方式好在实时性比较高，但是会增加broker的负载；而且消费端能力不同，如果push推送过快，消费端会出现很多问题。
+pull：producer发送消息后，broker什么也不做，等着consumer自己来读取。它的优点在于主动权在消费者端，可控性好；但是间隔时间不好设置，间隔太短浪费资源，间隔太长又会消费不及时。
+长轮询：当consumer过来请求时，broker会保持当前连接一段时间 默认15s,如果这段时间内有消息到达，则立刻返回给consumer；15s没消息的话则返回空然后重新请求。这种方式的缺点就是服务端要保存consumer状态，客户端过多会一直占用资源。
+
+RocketMQ默认是采用pushConsumer方式消费的，从概念上来说是推送给消费者，它的本质是pull+长轮询。这样既通过长轮询达到了push的实时性，又有了pull的可控性。系统收到消息后会自动处理消息和offset(消息偏移量)，如果期间有新的consumer加入会自动做负载均衡(集群模式下offset存在broker中; 广播模式下offset存在consumer里)。当然我们也可以设置为pullConsumer模式，这样灵活性会提高，但是代码却会很复杂，需要手动维护offset，消息存储和状态。
+
+
+- vs kafka
+
+为什么kafka比RocketMQ吞吐量更高
+kafka性吞吐量更高主要是由于Producer端将多个小消息合并，批量发向Broker。kafka采用异步发送的机制，当发送一条消息时，消息并没有发送到broker而是缓存起来，然后直接向业务返回成功，当缓存的消息达到一定数量时再批量发送。
+
+此时减少了网络io，从而提高了消息发送的性能，但是如果消息发送者宕机，会导致消息丢失，业务出错，所以理论上kafka利用此机制提高了io性能却降低了可靠性。
+
+RocketMQ为何无法使用同样的方式
+RocketMQ通常使用的Java语言，缓存过多消息会导致频繁GC。
+Producer调用发送消息接口，消息未发送到Broker，向业务返回成功，此时Producer宕机，会导致消息丢失，业务出错。
+Producer通常为分布式系统，且每台机器都是多线程发送，我们认为线上的系统单个Producer每秒产生的数据量有限，不可能上万。
+缓存的功能完全可以由上层业务完成。
+为什么选择RocketMQ
+当broker里面的topic的partition数量过多时，kafka的性能却不如rocketMq。
+
+kafka和rocketMq都使用文件存储，但是kafka是一个分区一个文件，当topic过多，分区的总量也会增加，kafka中存在过多的文件，当对消息刷盘时，就会出现文件竞争磁盘，出现性能的下降。一个partition（分区）一个文件，顺序读写。一个分区只能被一个消费组中的一个 消费线程进行消费，因此可以同时消费的消费端也比较少。
+
+rocketMq所有的队列都存储在一个文件中，每个队列的存储的消息量也比较小，因此topic的增加对rocketMq的性能的影响较小。rocketMq可以存在的topic比较多，可以适应比较复杂的业务。
+

@@ -29,7 +29,7 @@
 - Exactly once——这正是人们想要的, 每一条消息只被传递一次
     - producer
         - 如果 producer 没有收到表明消息已经被提交的响应, 那么 producer 可以将消息重传
-        - 如果最初的请求事实上执行成功了，producer有幂等性的传递选项，该选项保证重传不会在 log 中产生重复条目
+        - 如果最初的请求事实上执行成功了，producer有等性的传递选项，该选项保证重传不会在 log 中产生重复条目
     - broker
         -  一旦消息被提交，只要有一个 broker 备份了该消息写入的 partition，并且保持“alive”状态，该消息就不会丢失
         -  committed message 和 alive partition 
