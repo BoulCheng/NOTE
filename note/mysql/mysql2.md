@@ -11,7 +11,7 @@
         - 如果在最后事务 1 由于插入的记录发生了唯一键冲突导致了回滚，而事务 2 没有发生错误而正常提交，在这时会发现当前表中的主键出现了不连续的现象，后续新插入的数据也不再会使用 10 作为记录的主键
         - InnoDB 存储引擎提供的 innodb_autoinc_lock_mode 配置控制的，该配置决定了获取 AUTO_INCREMENT 计时器时需要先得到的锁，该配置存在三种不同的模式
             - 连续模式 innodb_autoinc_lock_mode = 1 默认
-                - INSERT ... SELECT、REPLACE ... SELECT 以及 LOAD DATA 等批量的插入操作需要获取表级别的 AUTO_INCREMENT 锁，该锁会在当前语句执行后释放
+                - INSERT ... SELECT、REPLACE ... SELECT 以及 LOAD DATA 等批量的插入操作( Bulk inserts )需要获取表级别的 AUTO_INCREMENT 锁，该锁会在当前语句执行后释放
                 - 简单的插入语句（预先知道插入多少条记录的语句）只需要获取获取 AUTO_INCREMENT 计数器的互斥锁并在获取主键后直接释放，不需要等待当前语句执行完成
                 - 目的是保证 AUTO_INCREMENT 的获取不会导致线程竞争，而不是保证 MySQL 中主键的连续
                 - MySQL 插入数据获取 AUTO_INCREMENT 时不会使用事务锁，而是会使用互斥锁，并发的插入事务可能出现部分字段冲突导致插入失败，想要保证主键的连续需要串行地执行插入语句
@@ -99,8 +99,20 @@
     - redo log 大小固定，采用循环写的方式，重做日志写满不可用就要刷新缓存池脏页(数据页)
     - innodb内存缓存池大小有限，缓冲池不够用的时候，就要刷新缓存池脏页(数据页)到磁盘
 - redo log在数据库存储引擎层 当前库(主库)
-- binlog在数据库server层 可以用于备份同步(从库)    
+- binlog在数据库server层 可以用于备份同步(从库)
+- innodb_flush_log_at_trx_commit
+    - 0 每秒刷盘
+    - 1 每次事务提交刷盘
+    - 2 每次事务提交写到OS缓存，然后每秒刷盘
 ### undo log
+- undo log是把所有没有COMMIT的事务回滚到事务开始前的状态，系统崩溃时，可能有些事务还没有COMMIT，在系统恢复时，这些没有COMMIT的事务就需要借助undo log来进行回滚。
+使用undo log时事务执行顺序
+1. 记录START T 
+2. 记录需要修改的记录的旧值（要求持久化）
+3. 根据事务的需要更新数据库（要求持久化）
+4. 记录COMMIT T 
+
+
 - 可以提供事务的原子性
 - 作用
     - 事务的回滚
@@ -113,7 +125,20 @@
 - undo记录中存储的是老版本数据，当一个旧的事务需要读取数据时，为了能读取到老版本的数据，需要顺着undo链找到满足其可见性的记录
 - undo log的产生会伴随着redo log的产生，因为undo log也需要持久性的保护
 
+### binlog
+- sync_binlog
+    - 1 每次binlog日志文件写入后与磁盘同步
+    - N 每N次binlog日志文件写入后与磁盘同步
 ### redo log 和 binlog的两阶段提交 
+- prepare
+    - redolog xid redolog的prepare标识
+- commit
+    - binlog xid redolog的commit标识
+- 重启恢复
+    - redolog有commit标识，提交事务
+    - redolog只有prepare标识
+        - binlog 有该xid事务 提交
+        - binlog 无该xid事务 回滚 
 ```
 prepare：redolog写入log buffer，并fsync持久化到磁盘，在redolog事务中记录2PC的XID，在redolog事务打上prepare标识
 commit：binlog写入log buffer，并fsync持久化到磁盘，在binlog事务中记录2PC的XID，同时在redolog事务打上commit标识
@@ -159,3 +184,61 @@ Step2 .如果redolog事务只有prepare标识，没有commit标识，则说明�
     
     - 增大join buffer size的大小（一次缓存的数据越多，那么内层包的扫表次数就越少）
     - 减少不必要的字段查询（字段越少，join buffer 所缓存的数据就越多）
+- 驱动表的定义：当进行多表连接查询时，1.指定了联接条件时，满足查询条件的记录行数少的表为驱动表，2.未指定联接条件时，行数少的表为驱动表
+    - 访问驱动表的次数更少了
+- MySQL 表关联的算法是 Nest Loop Join，是通过驱动表的结果集作为循环基础数据，然后一条一条地通过该结果集中的数据作为过滤条件到下一个表中查询数据，然后合并结果
+    
+    
+- 数据库连接池 参数
+    - druid
+    - 连接池(private volatile DruidConnectionHolder[] connections;)中数据库连接使用完 再获取连接会等待
+
+- mysql 最大连接数
+    ```
+    mysql>
+    mysql> show variables like '%max_connections%';
+    +------------------------+-------+
+    | Variable_name          | Value |
+    +------------------------+-------+
+    | max_connections        | 151   |
+    | mysqlx_max_connections | 100   |
+    +------------------------+-------+
+    2 rows in set (0.00 sec)
+    
+    mysql>
+    mysql>
+    ```
+    - “Can not connect to MySQL server. Too many connections”-mysql 1040错误，访问MySQL且还未释放的连接数目已经达到MySQL的上限
+- 机器最大tcp连接数(服务端接受连接)
+    - Linux每维护一条TCP连接都要花费资源。处理连接请求，保活，数据的收发时需要消耗一些CPU，维持TCP连接主要消耗内存
+    - TCP在静止的状态下，就不怎么消耗CPU了，主要消耗内存。而Linux上内存是有限的；
+        - 一条TCP连接如果不发送数据的话，消耗内存是3.3K左右。
+    - 如果有数据发送，需要为每条TCP分配发送缓存区，大小受你的参数net.ipv4.tcp_wmem配置影响，默认情况下最小是4K。
+    - 最大并发数取决你的内存大小
+    
+    
+### 数据库连接池原理
+
+- 不管on上的条件是否为真都会返回left或right表中的记录，full则具有left和right的特性的并集。而inner jion没这个特殊性，则条件放在on中和where中，返回的结果集是相同的
+
+可以总结数据库为了解决 partial write问题，一般有4种手段：
+事后恢复：innodb doublewirite 机制，事先存一份page的副本，当partial write发生需要恢复时，先通过page的副本来还原该page，再进行重做；
+事后恢复：物理redo log 恢复机制，物理redo log里面存有完整的数据page，当partial write发生需要恢复时，先通过redo log page的副本来还原该page，再进行重做可以保证幂等性；
+事先避免：底层存储来实现原子写入避免partial write；
+事先避免：数据库的page size 设置为块设备扇区大小512字节保证原子写避免partial write，如：innodb redo log 。
+
+RocksDB & InfluxDB
+
+存储引擎采用LSM或者TSM（类LSM）的结构，数据page采用append only方式写入，而不是像innodb或PG一样采用in-place update的方式写入page，所以即使出现了partial write，由于原page没有变更，可以通过原page重做wal log恢复来保证page的完整性
+
+
+
+- InnoDB read-ahead
+    - InnoDB 提供了两种预读的方式，一种是 Linear read ahead，由参数innodb_read_ahead_threshold控制，当你连续读取一个 extent 的 threshold 个 page 的时候，会触发下一个 extent 64个page的预读。另外一种是Random read-ahead，由参数innodb_random_read_ahead控制，当你连续读取设定的数量的page后，会触发读取这个extent的剩余page。
+
+### NULL & 索引
+- 可为null字段
+    - 当某一列有为null值的数据时，该列的索引依然生效
+    - 使用is null确实是走了索引，没有问题。
+    - 现象比较特殊，在这里is not null条件并没有走索引，但是修改成select a from j_copy的话，就可以走索引了。一个比较靠谱的说法：select a from j_copy直接读取索引上的数据后即可返回。而select * from j_copy如果走索引的话，则需要通过索引获取数据位置再去读取整行内容，在数据比较少的情况下，可能会更慢，所以mysql的优化器选择了直接全表扫描。
+- 字段not null的情况下，is null和is not null都不会走索引
