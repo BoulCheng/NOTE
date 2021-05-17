@@ -1,0 +1,29 @@
+- 响应首部 Set-Cookie 被用来由服务器端向客户端发送cookie
+- Cookie技术是客户端的解决方案，由服务器发送给客户端的特殊信息，存放在response的header中，这些信息以文本文件方式存放在客户端，由客户端每次向服务器发送请求时带上，此时是存放在request的header中
+客户端向服务端Request请求。
+服务器在response的header中设置Cookie，发送给客户端。
+客户端会将请求request和Cookie一起打包发送给服务端。
+服务端会根据Cookie判断将response返回给客户端。
+因为HTTP协议“无状态”的特点，在请求完毕后会关闭连接，再次交换数据需要建立新的连接，无法跟踪会话。Cookie机制的引入正好弥补了HTTP协议“无状态”的缺陷。
+
+
+
+Session是另一种记录客户状态的机制，不同的是Cookie保存在客户端浏览器中，而Session保存在服务器行。客户端浏览器访问的时候，服务器把客户端信息以某种形式记录在服务器上。
+
+注意：当客户端浏览器再次请求服务器时是不需要携带信息的，在服务器上已有记录
+在服务端运行程序时创建Session
+在创建Session的同时，服务器会为该Session生成唯一的Session ID
+在Session被创建后，可以调用相关方法往Session中添加内容，注意发送到客户端的只有Session ID
+当客户端再次发送请求时，会将Session ID带上，服务器接受到请求之后就会依据ID确认用户身份，找到相应的Session。
+
+
+
+
+在HTTP1.0中默认采用的是短连接，即浏览器和服务器每进行一次HTTP操作需要进行一次连接，任务结束时中断
+次遇到以一个Web资源都会建立一个HTTP会话，进行三次握手，十分耗费资源。因此，通过在Request中增加“Connection：keep-alive”可支持长连接
+客户端发出request，其中该版本号为1.0，并且在request中包含了一个header：“Connection：keep-alive”。
+服务器收到该请求的长连接后，将会在response加上“Connection：keep-alive”，同时不会关闭已建立的TCP连接。
+同时，客户端收到response中的header，发现是一个长连接，同样不会关闭已建立的TCP连接
+在HTTP1.1起，默认使用长连接，来保持连接特性，即在请求头和响应头中默认加入“Connection：keep-alive” 。HTTP长连接利用同一个TCP连接处理多个HTTP请求和响应。
+
+Keep-Alive不会永久保持连接，有一个保持时间，可以在不同的服务器中设定时间，实现长连接要求客户端和服务器都支持长连接
