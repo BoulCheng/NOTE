@@ -69,4 +69,4 @@
         - Redis cluster 拥有固定的16384个slot，slot是虚拟的且被分布到各个master中，当key 映射到某个master 负责slot时，就由对应的master为key 提供服务
     - 分片和服务结点的所属关系 
         - 每个Master节点都维护着一个位序列bitmap为16384/8字节，也就是Master使用bitmap的原理来表征slot的下标，Master 节点通过 bit 来标识哪些槽自己是否拥有，比如对于编号为1的槽，Master只要判断序列的第二位是不是为1即可
-- Consistent hashing 普通哈希取模算法的平滑连贯版本，可称为连贯性哈希算法    
+- Consistent hashing，其中Consistent译为"一致的，连贯的"，或许连贯的更贴切一些，这种特殊的哈希算法实现了普通哈希取模算法的平滑连贯版本，称为连贯性哈希算法，好像更合适    
