@@ -34,6 +34,9 @@
     - 如何保证不同客户端的读写操作的一致性
         - sync
         - watcher通知机制
+- 有序节点
+    - 序号的最大值
+    - zookeeper 临时有序节点最大序号节点失效后，后面新建的序号是否会继续严格递增
 - Zookeeper vs Chubby
     - zookeeper 
         - Zookeeper：provide a simple and high performance kernel for building more complex coordination primitives at the client.
@@ -112,3 +115,26 @@
     
     - 不Prepare直接Accept为啥是安全的
       - 在一个Leader提交proposal的前提下，不会有其他Proposer提交，那么就不会出现Acceptor promised的最大编号大于proposal中所带编号的情况，同样也不会出现Acceptor accept的编号大于proposal中所带编号的情况。因此这么做是安全的。
+      
+      
+      
+  - 分布式锁
+  
+其实，各个领域的线性一致性都是一样的。线性一致性最早在并行计算领域提出，现在在分布式领域、数据库领域都在用，含义是一样的。我们可以把线性一致性称作为强一致性，或者原子一致性。准确的来说，Zookeeper如果只有写请求时，是线性一致性的；如果从读和写的角度来说是顺序一致性的
+严格说【Zookeeper如果只有写请求时，是线性一致性的；如果从读和写的角度来说是顺序一致性的】
+
+
+假设有2n+1个server，在同步流程中，leader 向 follower 同步数据，当同步完成的 follower 数量大于 n+1时同步流程结束，系统可接受 client 的连接请求。如果client 连接的并非同步完成的follower，那么得到的并非最新数据，但可以保证单调性。
+假设是 follower 接收的写请求，然后转发给 leader 处理；leader 完成两阶段提交的机制。向所有 server 发起提案，当提案获得超过半数（n+1）的 server 认同后，将对整个集群进行同步，超过半数（n+1）的 server 同步完成后，该写请求完成。如果 client 连接的并非同步完成 follower，那么得到的并非最新数据，但可以保证单调性。
+
+
+用分布式系统的CAP原则来分析Zookeeper
+（1）C（一致性）: Zookeeper保证了顺序一致性（满足最终一致性），在十几秒可以Sync到各个节点
+（2）A（可用性）: Zookeeper保证了可用性，数据总是可用的，没有锁。并且有一大半的节点所拥有的数据是最新的、实时的。 如果想保证取得是数据一定是最新的，需要手工调用Sync()； 恢复模式下是不可用的
+（3）P（分区容错性）: 有两点需要分析
+节点多了会导致写数据延时变大，因为更多的节点需要同步
+节点多了Leader选举耗时变长，从而会放大网络的问题， 可以通过引入 observer（不参与选举）节点缓解这个问题.
+
+
+
+client连接到follower 分布式锁 获取锁节点信息 如果follower不在过半写成功的列表中 此处获取锁节点信息是否要调用sync同步leader

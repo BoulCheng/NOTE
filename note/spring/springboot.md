@@ -13,15 +13,40 @@
         - @Import({AutoConfigurationImportSelector.class})
             - spring-starter 自配配置 
 - 创建容器 ApplicationContext
+    - 会注册BeanFactoryPostProcessor、BeanPostProcessor
+        - ConfigurationClassPostProcessor、AutowiredAnnotationBeanPostProcessor
+        - ConfigurationClassPostProcessor#postProcessBeanDefinitionRegistry 的处理通过 ClassPathBeanDefinitionScanner 处理
+    - AnnotationConfigApplicationContext
+        - 父类 GenericApplicationContext
+            - 实例化 DefaultListableBeanFactory 对象
+        - AnnotatedBeanDefinitionReader (注解处理)
+            - BeanFactoryPostProcessor
+                - ConfigurationClassPostProcessor
+                    - beanFactory 后置处理器，用来完成 bean 的扫描与BeanDefinition注入工作
+                    - 如springboot自动配置会用到
+            - BeanPostProcessor
+                - AutowiredAnnotationBeanPostProcessor
+                    - @Autowired注解 依赖注入
+                    - bean 后置处理器，用来完成 @AutoWired 自动注入
+        - ClassPathBeanDefinitionScanner (扫描包处理)
+            - ClassPathMapperScanner extends ClassPathBeanDefinitionScanner
+                - 如Mybatis 处理 @Mapper注解
 - 容器预处理 
     - 注册启动类的BeanDefinition到容器
         - 在容器刷新步骤 ConfigurationClassPostProcessor 会处理 @Configuration 注解的类；且如果该类有@ComponentScan注解但配置的包为空，则使用@Configuration注解的类的包作为扫描包
             - 有了注册启动类的BeanDefinition到容器，因此启动的包会作为扫描包被扫描处理各种注解
         
 - 刷新容器
-- ApplicationContext
-    - ApplicationContext
-    - ApplicationContext
+- registerShutdownHook
+    - 优雅下线发布 ContextClosedEvent
+        - kill -15会通知到应用程序，这就是操作系统对于优雅上下线的最基本的支持。系统会发送一个SIGTERM的信号给对应的程序。当程序接收到该信号后，具体要如何处理是自己可以决定的
+        - 自从容器化技术推出之后，在操作系统和应用程序之间，多了一个容器层，而Docker、k8s等容器其实也是支持优雅上下线的。如Docker中同样提供了两个命令， docker stop 和 docker kill，docker stop就像kill -15一样，他会向容器内的进程发送SIGTERM信号，在10S之后（可通过参数指定）再发送SIGKILL信号
+        - Java程序的终止运行是基于JVM的关闭实现的，JVM关闭方式分为正常关闭、强制关闭和异常关闭3种，正常关闭就是支持优雅上下线的。正常关闭过程中，JVM可以做一些清理动作。
+            - 通过JDK中提供的shutdown hook实现的。JDK提供了Java.Runtime.addShutdownHook(Thread hook)方法，可以注册一个JVM关闭的钩子
+            - 当使用kill（默认kill -15）关闭进程的时候，程序会先执行注册的shutdownHook，然后再退出，并且会给出一个提示：interrupted by signal 15: SIGTERM
+- callRunner
+    - ApplicationRunner
+    - CommandLineRunner
 
 #### springboot jar 如何加载到应用程序依赖jar包中的class
 - classpath
@@ -61,7 +86,8 @@
     - 采用双亲委派机制 无法加载应用程序所依赖的jar包
     - 自定义类加载机制
         - 自定义类加载器LaunchedURLClassLoader extends URLClassLoader 来加载jar in jar； 将fat jar包依赖的所有类和资源 包括应用程序的class文件和依赖的jar包中class文件都转化为urls传递给父类java.net.URLClassLoader
-        - 使用该类加载器加载 SpringPracticeApplication 类，然后调用其main方法
+            - parents 是应用程序类加载器 并未破坏双亲委派
+        - 使用该类加载器加载 SpringPracticeApplication 启动类，然后调用其main方法
         - 将该自定义类加载器设置为 线程上下文类加载器 
              - 在spring容器启动初始化容器时通过该线程上下文类加载器加载依赖jar包中的类和应用程序本身的类
     - @see org.springframework.util.ClassUtils#getDefaultClassLoader() 优先获取线程上下文类加载器 contextClassLoader
@@ -108,7 +134,7 @@
         - 属性配置
             - Value注解直接将属性赋值给类的变量
             - 配置文件 
-        - PropertyResolver初始化逻辑
+        - PropertyResolver 初始化逻辑
             - Spring的属性处理逻辑
                 - 初始化逻辑以实现 PropertySourcesPlaceholderConfigurer(BeanFactoryPostProcessor) 类的 postProcessBeanFactory 函数作为入口
     - ConditionalOnBean \ ConditionalOnMissingBean

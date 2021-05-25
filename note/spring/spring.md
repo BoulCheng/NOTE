@@ -1,6 +1,9 @@
 
 
 
+#### todo
+- application.yml bootstrap.yml
+- spring.profiles
 
 #### bean
 - scope
@@ -44,12 +47,13 @@
         - bean 标签有一个autowire属性 byType、byName、constructor(与Bean的构造器入参具有相同类型的其他Bean自动装配到Bean构造器的对应入参中)
             - setter方法注入
             - 构造函数注入
+        - autowireConstructor()
     - 静态工厂方法注入 factory-method
     - 实例工厂方法注入 factory-bean factory-method
     
     
 
-- 异步注解@Async为什么会产生循环依赖问题；异步注解是不是一定会产生循环依赖问题；异步注解产生的循环依赖如何解决，解决的原理是什么；为什么spring要这么设计异步注解    
+    
 
 
 #### 注解
@@ -141,6 +145,11 @@ org.springframework.beans.factory.BeanCurrentlyInCreationException: Error creati
 	at org.springframework.boot.loader.Launcher.launch(Launcher.java:51)
 	at org.springframework.boot.loader.JarLauncher.main(JarLauncher.java:52)
 ```
+
+- 用---实现多文件内容的分割，application.yml中用spring.profiles.active: 实现指定的文件
+- (todo)异步注解@Async为什么会产生循环依赖问题；异步注解是不是一定会产生循环依赖问题；异步注解产生的循环依赖如何解决，解决的原理是什么；为什么spring要这么设计异步注解
+
+- springboot启动(todo)
 
 ```
 java -Dspring.profiles.active=pre -Dfile.encoding=UTF8 -Dsun.jnu.encoding=UTF8 -XX:HeapDumpPath=/home/admin/logs/oomDump.hprof -XX:+HeapDumpOnOutOfMemoryError -XX:+HeapDumpBeforeFullGC -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:+PrintGCDateStamps -XX:+PrintHeapAtGC -XX:+PrintTenuringDistribution -Xloggc:/home/admin/logs/gc_%p.log -Drocketmq.client.logRoot=/home/admin/logs/rocketmq.log -Drocketmq.client.logLevel=WARN -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005 -Xms1331m -Xmx1331m -XX:+UseParallelOldGC -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20 -XX:GCTimeRatio=99 -XX:AdaptiveSizePolicyWeight=90 -XX:MaxMetaspaceSize=256m -XX:ParallelGCThreads=1 -Djava.util.concurrent.ForkJoinPool.common.parallelism=1 -XX:CICompilerCount=2 -XX:+ExitOnOutOfMemoryError -cp . -jar /deployments/peek-data.jar
@@ -274,3 +283,55 @@ java -Dspring.profiles.active=pre -Dfile.encoding=UTF8 -Dsun.jnu.encoding=UTF8 -
         - Advice 
     - 装饰器模式
              
+#### 循环引用
+- Spring对Bean的实例化、初始化顺序，若没有特别干预的情况下，它和类名字母排序有关
+- Async
+    - 若按照正常Spring容器会先初始化A，启动就肯定是不会报错的，不会发生循环引用的错误
+    - 只有用了@Async注解的类在类创建中被其他类循环引用了 才会发生循环引用的错误，源码可以看出这一点
+```
+@Service
+public class A implements AInterface{
+    @Autowired
+    private BInterface b;
+    @Override
+    public void funA() {
+    }
+}
+
+@Service
+public class B implements BInterface {
+    @Autowired
+    private AInterface a;
+    @Async // 写在B的方法上  这样B最终会被创建代理对象
+    @Override
+    public void funB() {
+        a.funA();
+    }
+}
+```
+- @Async 循环引用解决
+    - 标注有@Lazy注解完成注入的时候，最终注入只是一个此处临时生成的代理对象，只有在真正执行目标方法的时候才会去容器内拿到真是的bean实例来执行目标方法
+    - 通过@Lazy注解能够解决很多情况下的循环依赖问题，它的基本思想是先'随便'给你创建一个代理对象先放着，等你真正执行方法的时候再实际去容器内找出目标实例执行
+    - 到容器中拿的还是那个唯一的单例bean(scope为单例的情况下)
+### 代理
+- 自调用失效
+    - AopContext.currentProxy()
+        - 使用AopContext.currentProxy();方式解决同类方法调用的方案
+    - 自己(@Autowired)注入自己
+    
+    
+
+### tx
+- 事务public方法 
+-  dk代理由于接口原因只能代理public方法？ 
+子类重写父类方法时，方法的访问权限不能小于原访问权限，在接口中，方法的默认权限就是public，所以子类重写后只能是public
+1.接口必须要具体类实现才有意义，所以必须是public。
+2.接口中的属性对所有实现类只有一份，所以是static。
+3.要使实现类为了向上转型成功，所以必须是final的。
+1、接口是一种约束和规范，是一种更加更高级的抽象类，抽象类的方法必须是公开的，因为要给人继承和使用啊，不用public，别人怎么看得到，所以在接口实现时，定义的方法修饰符必须是public；因此子类在实现接口重写方法时的修饰符必须是public。
+2、另外再扩展一下，接口中没有变量（既然是约束和规范，怎么能够定义一个大家都可以改的东西呢），只能是常量，接口中定义常量默认的修饰符为public static final
+
+### 注解实现
+AnnotationMetadata注解的实现
+在AnnotationMetadata语义上,基于Java反射StandardAnnotationMetadata和AnnotationMetadataReadingVisitor保持一致。基于Java反射API实现必然需要反射的Class被ClassLoader加载，当指定Java Package扫描Spring模式注解时,StandardAnnotationMetadata显然不适应。
+因为应用不需要将指定Package下的Class全部加载。基于ASM实现的AnnotationMetadataReadingVisitor更适合这种场景，解释了为什么该类出现ClassPathScanningCandidateComponentProvider实现中

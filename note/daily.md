@@ -302,3 +302,376 @@
     - mysql join 原理
     - 归并 动态
     - Semaphore  LockSupport
+
+- 1.14
+    - 限流
+    - 排序算法
+    - threadLocal
+
+- 1.15
+    - springboot自动配置
+    - TransactionAutoConfiguration 自动配置过程
+    - 切面 vs 事务 vs 异步注解   AopConfigUtils#APC_PRIORITY_LIST
+    - 切面和事务的 specificInterceptors 以及它们的顺序关系，以及在责任链下 事务对切面的影响
+    - SuppressWarnings RetentionPolicy(Retention)  ElementType(Target)
+        - 注解支持的元素数据类型: 所有基本类型（int,float,boolean,byte,double,char,long,short） String Class enum Annotation 上述类型的数组
+    - 事务自动配置
+    - AopAutoConfiguration TransactionAutoConfiguration
+
+    - MethodInterceptor
+    - org.springframework.transaction.interceptor.BeanFactoryTransactionAttributeSourceAdvisor: advice org.springframework.transaction.interceptor.TransactionInterceptor@3a0d48d2
+        - TransactionInterceptor
+    - InstantiationModelAwarePointcutAdvisor: expression [InsertDBPointcut()]; advice method [public java.lang.Object com.zlb.spring.practice.aop.DBAspect.singleExecute(org.aspectj.lang.ProceedingJoinPoint) throws java.lang.Throwable]; perClauseKind=SINGLETON
+        - org.springframework.aop.aspectj.AspectJAroundAdvice: advice method [public java.lang.Object com.zlb.spring.practice.aop.DBAspect.singleExecute(org.aspectj.lang.ProceedingJoinPoint) throws java.lang.Throwable]; aspect name 'DBAspect'
+        - InterceptorAndDynamicMethodMatcher
+- 1.16
+    - 动态规划
+- 1.17
+    - mysql
+    - 切面 vs 事务
+- 1.18
+    - 切面 vs 事务 advisor链 排序
+
+- 1.19
+    - 动态规划
+- 1.20
+    - dubbo 多种远程调用方式，例如dubbo RPC（二进制序列化 + tcp协议）、http invoker（二进制序列化 + http协议，至少在开源版本没发现对文本序列化的支持）、hessian（二进制序列化 + http协议）、WebServices （文本序列化 + http协议）等等，但缺乏对当今特别流行的REST风格远程调用（文本序列化 + http协议）的支持
+    - dubbo 序列化协议 hessian vs kryo
+
+- 2.1
+    - TreeSet 遍历
+    - jdk 排序
+
+- 2.2
+    - 折半插入排序  采用折半查找的方法来加快寻找插入点的速度
+        - 对于未排序数据，在已排序序列中从后向前扫描，找到相应位置并插入
+        - 如果待插入的元素与有序序列中的某个元素相等，则将待插入元素插入到相等元素的后面
+    - 归并排序
+
+- 2.19-20
+    - docker
+    - springboot启动原理
+
+
+- 2.22
+    - 事务
+        - aop在目标对象的生命周期的织入时机
+        - spring aop的织入时机  事务public方法jdk代理由于接口原因只能代理public方法
+        - 事务的传播
+        - @Lazy ,  expose-proxy + AopContext.currentProxy()
+    - H2 Mysql Tidb influxdb es
+    - dubbo
+        - 调用方式  Dubbo RPC
+        - kryo 序列化 优于 hession2的原因
+        - rpc框架原理
+        - 支持的协议和注册中心
+        - xml配置
+            - 重试
+            - 超时
+        - 架构 、 软件架构发胀
+            - 自动动态部署
+        -
+- 2.23
+    - dubbo
+        - 配置
+            - xml配置
+                - 配置覆盖关系
+            - 配置来源覆盖
+        - 集群容错
+            - failover 重试
+            - 容错模式
+            - 负载均衡策略 ？
+        - 线程模型和线程池策略
+            - netty 断开链接？
+        - 结果缓存
+        - 上下文信息
+            - RpcContext
+        - 异步执行
+        - 异步调用
+        - 参数回调 设计模式
+        - sent ?
+        - 本地存根
+        - 本地伪装 通常用于服务降级
+        - 服务调用过程
+        - 并发控制
+        - 消费端线程池模型
+        - Provider 端性能配置 threads executes actives retries timeout
+            - connections 默认0代表1个
+                - dubbo协议
+                    - connections 表示该服务消费方服务对每个服务提供者建立的长连接数
+            - accepts 默认不限
+                - 服务提供方最大可接受连接数
+            - executes 默认不限 (方法级别的舱壁模式)
+                - 服务提供方服务每个方法 并发执行数（或占用线程池线程数）
+                - ExecuteLimitFilter 责任链模式
+            - actives 默认不限 (方法级别的舱壁模式)
+                - 每个服务消费方客户端每个服务方法的 并发执行数（或占用连接的请求数）
+                - ActiveLimitFilter 责任链模式
+            - threads 默认200
+                - 服务线程池大小
+        - spi  与jdk-spi的区别 依赖注入以及具体实现类的自适应
+
+- 2.24
+    - spring 自定义标签解析
+    - dubbo核心实现细节
+    - spiNettyServer
+    - 服务路由 2 3 5 10
+    - 服务引用
+    - 服务导出
+    - dubbo与spring的整合
+    
+- 2.25
+    - 调用过程
+    - 协议  dubbo协议
+- 2.27
+    - 调用过程
+    - 调优参数
+        - 方法级别的舱壁模式
+    - 与spring-cloud的对比
+- 2.28
+    - 集群、负载均衡[https://github.com/BoulCheng/spring-framework/tree/v5.2.5.RELEASE-comment]
+- 3.5
+    - rocketmq 消息写入  mmap  pageCache
+
+- 3.6-7
+    - netty io
+-
+    - canal 图片在源码
+- 3.8-9
+    - rocketmq
+
+- 3.11
+    - rocketmq
+    - rocketmq 事务消息
+
+- 3.12
+    - 时序图的画法
+    - netty的各种ChannelHandler
+
+- 3.13
+    - CompletableFuture
+    - 函数式编程、lambda
+
+- 3.13
+    - rocketmq 刷盘 数据同步
+
+- 3.18
+    - io
+
+- 4.14
+    - rocketmq
+
+- 4.14
+    - springboot jar
+    - docker
+- 324
+    - netty  io 二叉树 broker消息消费
+- 325
+    - ThreadLocal 哈希表 hashmap
+- 326
+    - hashmap 位运算
+    - rocketmq starter mybatis
+- 327
+    - mybatis-spring
+    - mybatis-spring 自动配置
+
+
+- 紧急的
+-
+
+- 328 327
+    - mysql日志文件 位图 布隆过滤器
+- 329
+    - rocketmq 死信队列 tcp
+    - 大数据生态 dataworks
+- 330
+    - 流式查询
+    - k8s
+    - 粘包
+    - mysql自增主键
+    - 树
+    - innodb B+
+    - 哈希索引
+
+- https://draveness.me/tags/%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E4%B9%88%E8%AE%BE%E8%AE%A1
+
+
+- https://help.aliyun.com/document_detail/110778.htm?spm=a2c4g.11186623.2.13.733e5b5965cQip#concept-l1l-s5x-bhb
+- mysql两阶段提交
+- mysql读取数据 怎么读 最小单位页 按文件系统的最小单位4k读 ？
+- Mysql Join算法原理
+
+
+- kafka VS rocketmq
+
+
+- linux 系统性能命令
+- OS
+
+- 41
+    - 列式存储
+    - OS
+    - redis单线程
+
+- 42
+    - 虚拟内存
+    - mmap
+    - 直接内存
+    - redis rdb
+- https://zhuanlan.zhihu.com/p/38348646
+- [https://docs.oracle.com/javase/tutorial/tutorialLearningPaths.html]
+- java.md
+
+
+
+
+==================================================================================================top==================================================================================================
+
+延时队列 和 事务消息的实现机制
+
+https
+分布式锁 事务
+
+穿透 击穿 雪崩
+
+io
+
+ConcurrentSkipListMap
+
+集合数据结构
+线程池
+nio
+内存模型 类加载机制
+sql加锁 事务
+分布式锁 事务 id capbase的应用
+高并发 高可用 高性能系统设计
+dubbo
+rocketmq
+netty 池化 粘包
+https tcp ip http
+事务与切面同时使用
+spring整合
+
+=======================================================================================================================================================================================================
+- spring事务
+
+- spring设计模式
+
+- mybatis 流式查询 游标查询
+
+- 49
+    - mybatis
+    - 设计模式
+
+- Spring常见面试题总结（超详细回答）
+- 提交源码注释
+- 修改github仓库可见性
+- 拍照
+- pdf转word
+
+
+
+
+- 简历技术核心熟练
+- 架构师视角拔高总结 从厚到薄
+- 面试题
+- 算法、数据结构
+- TCC优化
+- 一致性算法
+- 如何设计 有中大型分布式、高并发、高可用性系统设  及应用性能优化
+- 事务spring传播
+- 分片算法
+
+
+
+
+Thread的线程方法与状态转换
+JMM、指令重排、happens-before原则、原子性、可见性与有序性
+ForkJoin并发框架
+- jvm
+- java锁
+- 分布式事务
+- 了解docker、k8s、大数据生态
+- linux java命令
+- dubbo
+- rocketmq kafka
+    - 消息 exactly one
+- 网络
+- jvm note
+- netty zk
+    - netty池化技术
+- redis
+    - rdb aof 集群
+- mysql
+    - 事务
+    - 一条sql
+
+- 自调用失效
+- 算法
+- netty Ratio
+- Sharding-JDBC 分库分表
+- kafka
+
+红黑树
+cas优化
+一致性算法
+分片算法
+mysql锁
+concurrenthashmap 如何保证并发安全
+序列化框架性能不同的原理 Protobuf
+
+dubbo调用和zookeeper更新
+zab raft算法
+分片算法
+mysql事务、锁、mysql一条更新sql、加不加事务的区别
+concurrent hashmap如何保证put初始value安全
+netty如何处理大量连接的心跳
+序列化protobuf的比较及序列化的过程 哪些地方可能会产生性能问题
+
+
+
+
+=======================================================================================================================================================================================================
+
+1、深入理解各种开源框架原理和机制
+2、有阅读开源框架源码的习惯，对技术有强烈的钻研精神，分布式调度框架ElasticJob的Contributor
+3、有作为技术骨干掌握核心系统设计开发的经验
+4、工作严谨、责任心强
+
+1、JAVA基础扎实，熟练掌握并发包、集合框架及其数据结构、线程池、nio，精通多线程编程；
+2、对JVM有一定的理解，包括内存模型、JVM内存结构、类加载机制以及性能优化；
+3、熟练掌握关系型数据库MySQL，精通事务型存储引擎InnoDB，对索引优化、sql加锁机制、事务有深入理解；
+4、深入理解各种开源框架的原理和机制，包括Netty、RocketMQ、Dubbo、Spring、MyBatis
+5、掌握分布式系统的设计，包括CAP定理、BASE理论、分布式事务、分布式锁、分布式缓存、MQ、RPC、网络通信，能合理应用分布式常用技术解决问题
+6、掌握多线程编码及性能优化，有高并发、高性能、高可用系统设计和开发经验；
+7、掌握各种设计模式，能进行可扩展性、可维护性的软件设计，有代码重构的能力，注重系统代码质量
+8、有阅读开源框架源码的习惯，对技术有强烈的钻研精神，有独立、主动学习技术的能力
+9、工作严谨、责任心强，并具备良好的沟通协作能力
+
+1. 在以下方面有深入理解：
+并发技术，Lock、CAS、线程池、Java内存模型、线程安全
+集合框架及其底层的数据结构
+MySQL，InnoDB存储引擎，索引、锁、事务
+RPC，Dubbo服务调用过程、集群容错、负载均衡算法、序列化方式、协议设计
+MQ，RocketMQ消息存储、发送、消费、事务消息，通信机制多线程模型
+网络通信框架Netty，NIO优化、线程模型、心跳机制、ioRatio、池化技术、粘包问题
+分布式，分布式事务、分布式锁、分布式ID
+Redis，Redis数据结构、集群原理，缓存穿透、击穿、雪崩
+网络，OSI参考模型，IP、TCP、HTTP、HTTPS协议
+IO，IO多路复用、Zero-copy、mmap、Page cache的应用，包括在Netty、RocketMQ、Redis、MySQL中的应用
+ORM，MyBatis与Spring整合的原理、Spring Boot自动配置原理
+Spring，AOP、IOC、事务，循环引用问题，事务与切面同时使用
+设计模式，各种设计模式在Spring、MyBatis中的实践应用
+数据结构，散列表、二叉查找树、红黑树、跳表、堆
+
+2. 开源框架源码
+2.1. 阅读过，熟悉Spring、Dubbo、RocketMQ、MyBatis、ElasticJob、Netty、JDK一些源码
+2.2. 分布式调度框架ElasticJob的Contributor，修改过其源码应用于生产
+3.3. 阅读开源框架源码一些个人笔记(Markdown链接):
+[RocketMQ](https://github.com/BoulCheng/rocketmq/commits/release-4.7.1-comment)
+[Dubbo](https://github.com/BoulCheng/dubbo-2.6.4)
+[Spring](https://github.com/BoulCheng/spring-framework/tree/v5.2.5.RELEASE-comment)
+[MyBatis](https://github.com/BoulCheng/mybatis-3/tree/mybatis-3.5.5-comment)
+[ElasticJob](https://github.com/BoulCheng/elastic-job-2.1.5/tree/sourceCodeAnalysis)
+[Netty](https://github.com/BoulCheng/netty-4.1.36.Final/tree/develop)
+[JDK](https://github.com/BoulCheng/
