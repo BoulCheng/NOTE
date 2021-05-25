@@ -27,3 +27,46 @@ Session是另一种记录客户状态的机制，不同的是Cookie保存在客�
 在HTTP1.1起，默认使用长连接，来保持连接特性，即在请求头和响应头中默认加入“Connection：keep-alive” 。HTTP长连接利用同一个TCP连接处理多个HTTP请求和响应。
 
 Keep-Alive不会永久保持连接，有一个保持时间，可以在不同的服务器中设定时间，实现长连接要求客户端和服务器都支持长连接
+
+
+
+
+content-length: 44
+content-type: application/json; charset=utf-8
+
+GET /index.html HTTP/1.1
+Host: www.example.com
+Connection: upgrade
+Upgrade: example/1, foo/2
+
+首部字段类型
+HTTP首部字段根据实际用途分为4中类型。
+通用首部字段： 请求报文和响应报文两方都会使用到的首部。
+Connection
+Upgrade
+Date
+
+Cache-Control	
+
+请求首部字段： 从客户端向服务器发送请求报文时使用的首部，补充了请求的附加内容、客户端信息、响应内容相关优先级等信息。
+Accept: text/html,application/json;q=0.9, application/xml;q=0.8 (或者 */*)  ，通知服务器，用户代理能够处理的媒体类型及媒体类型的相对优先级
+Accept-Charset
+Accept-Encoding 
+Accept-Language
+Host 指明请求服务器的域名， 及服务器所监听的Tcp端口号，如果没有给定端口，会自动使用被请求服务的默认端口， 用于告知服务器请求资源所处的服务器域名及端口号
+    - 描述请求将被发送的目的地，包括，且仅仅包括域名和端口号。在任何类型请求中，request都会包含此header信息
+Origin 用来说明请求从哪里发起的，包括，且仅仅包括协议和域名
+User-Agent 将创建请求的浏览器和用户代理信息等名称传达给服务器
+
+Referer 可以根据Referer查看请求资源的是从哪个页面发起的，告知服务器请求的原始资源的URI，其用于所有类型的请求，并且包括：协议+域名+查询参数    
+
+
+响应首部字段： 从服务器端向客户端返回响应报文时使用的首部，补充了响应时的附加内容，也会要求客户端附加额外的内容信息。
+Server 首部字段Server告知客户端当前服务器上安装的HTTP服务器应用程序的信息
+Access-Control-Allow-Origin:: https://juejin.cn
+
+实体首部字段： 针对请求报文和响应报文的实体部分使用到的首部，补充了资源内容更新时间等与实体有关的信息
+Content-Length 实体主体部分的大小（bites）
+content-type: application/json; charset=utf-8
+Expires
+
